@@ -1,0 +1,69 @@
+{
+  "status": "ok",
+  "object": [
+    {
+      "hs_code": "1205",
+      "commodity_name": "Canola / rapeseed",
+      "exports": 5234000000,
+      "imports": 12000000,
+      "prev_exports": 4800000000,
+      "prev_imports": 11000000
+    },
+    {
+      "hs_code": "4407",
+      "commodity_name": "Lumber (wood sawn)",
+      "exports": 1890000000,
+      "imports": 45000000,
+      "prev_exports": 2100000000,
+      "prev_imports": 40000000
+    },
+    {
+      "hs_code": "2709",
+      "commodity_name": "Crude petroleum",
+      "exports": 320000000,
+      "imports": 0,
+      "prev_exports": 280000000,
+      "prev_imports": 0
+    },
+    {
+      "hs_code": "2710",
+      "commodity_name": "Petroleum products",
+      "exports": 150000000,
+      "imports": 89000000,
+      "prev_exports": 140000000,
+      "prev_imports": 85000000
+    },
+    {
+      "hs_code": "2711",
+      "commodity_name": "Natural gas",
+      "exports": 210000000,
+      "imports": 0,
+      "prev_exports": 180000000,
+      "prev_imports": 0
+    },
+    {
+      "hs_code": "8471",
+      "commodity_name": "Machinery / computers",
+      "exports": 45000000,
+      "imports": 12300000000,
+      "prev_exports": 42000000,
+      "prev_imports": 11800000000
+    },
+    {
+      "hs_code": "8542",
+      "commodity_name": "Electronic integrated circuits",
+      "exports": 67000000,
+      "imports": 3400000000,
+      "prev_exports": 58000000,
+      "prev_imports": 3200000000
+    },
+    {
+      "hs_code": "2601",
+      "commodity_name": "Iron ores and concentrates",
+      "exports": 2100000000,
+      "imports": 5000000,
+      "prev_exports": 1900000000,
+      "prev_imports": 4500000
+    }
+  ]
+}

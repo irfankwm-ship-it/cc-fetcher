@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Reuters World News</title>
+    <link>https://www.reuters.com</link>
+    <description>World news from Reuters</description>
+    <item>
+      <title>Canada announces new trade restrictions on China technology exports</title>
+      <link>https://www.reuters.com/world/canada-china-trade-restrictions-2025</link>
+      <description>Canada's government announced new export controls targeting advanced technology transfers to China, citing national security concerns. The restrictions follow similar moves by allies including the US and EU.</description>
+      <pubDate>Fri, 17 Jan 2025 14:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Beijing responds to Canadian diplomatic statements on human rights</title>
+      <link>https://www.reuters.com/world/beijing-canada-human-rights-2025</link>
+      <description>China's foreign ministry spokesperson issued a formal response to recent Canadian parliamentary statements regarding human rights in Xinjiang, calling the remarks "interference in internal affairs."</description>
+      <pubDate>Fri, 17 Jan 2025 12:15:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>European Central Bank holds interest rates steady</title>
+      <link>https://www.reuters.com/business/ecb-rates-2025</link>
+      <description>The ECB maintained its benchmark interest rate at 3.75%, signaling a cautious approach to monetary easing amid persistent inflation in the eurozone services sector.</description>
+      <pubDate>Fri, 17 Jan 2025 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Canadian canola exports to China reach five-year high</title>
+      <link>https://www.reuters.com/world/canada-canola-china-exports-2025</link>
+      <description>Statistics Canada data shows canola shipments to China surged 18% year-over-year, reaching $5.2 billion in the latest reporting period. The recovery follows years of trade tensions between Ottawa and Beijing.</description>
+      <pubDate>Thu, 16 Jan 2025 16:45:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>PRC military exercises near Taiwan draw international concern</title>
+      <link>https://www.reuters.com/world/prc-taiwan-military-2025</link>
+      <description>The People's Republic of China conducted large-scale military drills in the Taiwan Strait, prompting statements from the United States, Japan, and Canada expressing concern over regional stability.</description>
+      <pubDate>Thu, 16 Jan 2025 09:20:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>UN climate talks progress in Geneva</title>
+      <link>https://www.reuters.com/world/un-climate-geneva-2025</link>
+      <description>Negotiators made incremental progress on loss and damage funding mechanisms at the intersessional climate talks in Geneva.</description>
+      <pubDate>Wed, 15 Jan 2025 11:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Canada announces new trade restrictions on China technology exports (updated)</title>
+      <link>https://www.reuters.com/world/canada-china-trade-restrictions-updated-2025</link>
+      <description>Updated: Canada's government announced new export controls targeting advanced technology transfers to China, citing national security concerns.</description>
+      <pubDate>Fri, 17 Jan 2025 16:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

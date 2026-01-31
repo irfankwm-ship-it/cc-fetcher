@@ -1,0 +1,35 @@
+parliament:
+  base_url: "https://api.openparliament.ca"
+  session: "44-1"
+  timeout: 30
+  keywords: ["China", "Beijing", "PRC", "Huawei", "canola"]
+
+statcan:
+  base_url: "https://www150.statcan.gc.ca/t1/wds/rest"
+  timeout: 60
+
+yahoo_finance:
+  indices:
+    - {ticker: "000001.SS", name: "Shanghai Composite"}
+    - {ticker: "399001.SZ", name: "Shenzhen Component"}
+    - {ticker: "^HSI", name: "Hang Seng"}
+    - {ticker: "000300.SS", name: "CSI 300"}
+  timeout: 30
+
+news:
+  feeds:
+    - {url: "https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/world/", name: "Globe and Mail"}
+    - {url: "https://www.cbc.ca/webfeed/rss/rss-world", name: "CBC"}
+    - {url: "https://www.scmp.com/rss/4/feed", name: "SCMP"}
+  keywords: ["China", "Beijing", "Canada-China", "PRC", "Chinese"]
+  timeout: 30
+
+xinhua:
+  url: "http://www.xinhuanet.com/english/"
+  timeout: 30
+
+global_affairs:
+  api_base: "https://api.io.canada.ca/io-server/gc/news"
+  dept: "departmentofforeignaffairstradeanddevelopment"
+  limit: 50
+  timeout: 30

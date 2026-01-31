@@ -1,0 +1,39 @@
+{
+  "articles": [
+    {
+      "title": "Statement by Minister of Foreign Affairs on China human rights dialogue",
+      "body": "The Minister of Foreign Affairs issued a statement regarding Canada's ongoing engagement with China on human rights issues, including the treatment of Uyghur minorities in Xinjiang and the situation in Hong Kong.",
+      "date": "2025-01-17",
+      "url": "https://www.international.gc.ca/news-nouvelles/statements/2025-01-17-china-hr.html",
+      "content_type": "statement"
+    },
+    {
+      "title": "Canada updates travel advisory for China",
+      "body": "Global Affairs Canada has updated the travel advisory for the People's Republic of China. Canadians are advised to exercise a high degree of caution due to the risk of arbitrary enforcement of local laws.",
+      "date": "2025-01-16",
+      "url": "https://www.international.gc.ca/news-nouvelles/travel/2025-01-16-china-advisory.html",
+      "content_type": "travel advisory"
+    },
+    {
+      "title": "Press release: Canada-EU joint statement on Indo-Pacific engagement",
+      "body": "Canada and the European Union issued a joint press release affirming their shared commitment to a free and open Indo-Pacific region, with specific references to maintaining stability in the Taiwan Strait.",
+      "date": "2025-01-15",
+      "url": "https://www.international.gc.ca/news-nouvelles/press/2025-01-15-eu-indopacific.html",
+      "content_type": "press release"
+    },
+    {
+      "title": "Canada announces development aid package for Southeast Asia",
+      "body": "The Government of Canada announced a $200 million development assistance package for Southeast Asian nations focused on climate resilience and democratic governance.",
+      "date": "2025-01-14",
+      "url": "https://www.international.gc.ca/news-nouvelles/press/2025-01-14-sea-aid.html",
+      "content_type": "press release"
+    },
+    {
+      "title": "Minister participates in Arctic Council ministerial meeting",
+      "body": "Canada's Minister of Foreign Affairs participated in the Arctic Council ministerial meeting discussing environmental protection and indigenous community engagement in the Arctic region.",
+      "date": "2025-01-13",
+      "url": "https://www.international.gc.ca/news-nouvelles/statements/2025-01-13-arctic.html",
+      "content_type": "statement"
+    }
+  ]
+}

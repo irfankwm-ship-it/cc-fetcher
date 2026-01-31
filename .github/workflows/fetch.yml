@@ -1,0 +1,52 @@
+name: Fetch Raw Data
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout cc-fetcher
+        uses: actions/checkout@v4
+
+      - name: Checkout cc-data
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/cc-data
+          path: cc-data
+          token: ${{ secrets.CC_PAT }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install httpx feedparser beautifulsoup4 yfinance pyyaml click
+
+      - name: Run fetcher
+        run: |
+          python -m fetcher.cli run \
+            --env prod \
+            --output-dir ./cc-data/raw/$(date +%Y-%m-%d)/
+
+      - name: Commit and push raw data to cc-data
+        working-directory: cc-data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add raw/
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Add raw data for $(date +%Y-%m-%d)"
+          git push
+
+      - name: Dispatch cc-analysis workflow
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CC_PAT }}
+          repository: ${{ github.repository_owner }}/cc-analysis
+          event-type: new-raw-data

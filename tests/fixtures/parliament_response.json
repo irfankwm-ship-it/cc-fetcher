@@ -1,0 +1,62 @@
+{
+  "Items": [
+    {
+      "BillNumber": "C-27",
+      "ShortTitle": "Digital Charter Implementation Act, 2022",
+      "Title": "An Act to enact the Consumer Privacy Protection Act, the Personal Information and Data Protection Tribunal Act and the Artificial Intelligence and Data Act and to make consequential and related amendments to other Acts",
+      "StatusName": "Senate - Second Reading",
+      "Status": "In Progress",
+      "LatestCompletedMajorStageEn": "Passed House of Commons",
+      "ParliamentSession": "44-1",
+      "SponsorName": "Hon. François-Philippe Champagne"
+    },
+    {
+      "BillNumber": "S-7",
+      "ShortTitle": "Protecting Canadians from Foreign Interference Act",
+      "Title": "An Act to amend the Criminal Code, the Security of Information Act and the Canada Evidence Act",
+      "StatusName": "House of Commons - Committee",
+      "Status": "In Progress",
+      "LatestCompletedMajorStageEn": "Passed Senate",
+      "ParliamentSession": "44-1",
+      "SponsorName": "Sen. Marc Gold"
+    },
+    {
+      "BillNumber": "C-34",
+      "ShortTitle": "Investment Canada Act amendments",
+      "Title": "An Act to amend the Investment Canada Act",
+      "StatusName": "Royal Assent",
+      "Status": "Completed",
+      "LatestCompletedMajorStageEn": "Royal Assent",
+      "ParliamentSession": "44-1",
+      "SponsorName": "Hon. François-Philippe Champagne"
+    },
+    {
+      "BillNumber": "C-70",
+      "ShortTitle": "Countering Foreign Interference Act",
+      "Title": "An Act respecting countering foreign interference",
+      "StatusName": "Royal Assent",
+      "Status": "Completed",
+      "LatestCompletedMajorStageEn": "Royal Assent",
+      "ParliamentSession": "44-1",
+      "SponsorName": "Hon. Dominic LeBlanc"
+    },
+    {
+      "BillNumber": "M-62",
+      "ShortTitle": "Motion on Uyghur Genocide Recognition",
+      "Title": "Motion to recognize the treatment of Uyghurs as genocide",
+      "StatusName": "Adopted",
+      "Status": "Completed",
+      "LatestCompletedMajorStageEn": "Adopted by the House",
+      "ParliamentSession": "43-2",
+      "SponsorName": "Michael Chong"
+    }
+  ],
+  "TotalCount": 5,
+  "HansardMentions": {
+    "China": 47,
+    "Beijing": 12,
+    "PRC": 3,
+    "Huawei": 8,
+    "canola": 5
+  }
+}
