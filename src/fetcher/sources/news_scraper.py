@@ -22,7 +22,10 @@ from fetcher.config import SourceConfig
 logger = logging.getLogger(__name__)
 
 DEFAULT_FEEDS = [
-    {"url": "https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/world/", "name": "Globe and Mail"},
+    {
+        "url": "https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/world/",
+        "name": "Globe and Mail",
+    },
     {"url": "https://www.cbc.ca/webfeed/rss/rss-world", "name": "CBC"},
     {"url": "https://www.scmp.com/rss/4/feed", "name": "SCMP"},
 ]
