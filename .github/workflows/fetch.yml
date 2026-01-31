@@ -28,11 +28,16 @@ jobs:
       - name: Install dependencies
         run: pip install -e .
 
+      - name: Determine date
+        id: date
+        run: echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
       - name: Run fetcher
         run: |
           python -m fetcher.cli run \
             --env prod \
-            --output-dir ./cc-data/raw/$(date +%Y-%m-%d)/
+            --date ${{ steps.date.outputs.date }} \
+            --output-dir ./cc-data/raw
 
       - name: Commit and push raw data to cc-data
         working-directory: cc-data
@@ -41,7 +46,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add raw/
           git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "Add raw data for $(date +%Y-%m-%d)"
+          git commit -m "Add raw data for ${{ steps.date.outputs.date }}"
           git push
 
       - name: Dispatch cc-analysis workflow
@@ -50,4 +55,4 @@ jobs:
           token: ${{ secrets.CC_PAT }}
           repository: ${{ github.repository_owner }}/cc-analysis
           event-type: new-raw-data
-          client-payload: '{"date": "$(date +%Y-%m-%d)"}'
+          client-payload: '{"date": "${{ steps.date.outputs.date }}"}'
