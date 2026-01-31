@@ -26,7 +26,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install httpx feedparser beautifulsoup4 yfinance pyyaml click
+        run: pip install -e .
 
       - name: Run fetcher
         run: |
