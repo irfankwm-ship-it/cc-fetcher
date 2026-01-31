@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from fetcher.config import RetryConfig, SourceConfig
-from fetcher.sources.statcan import _compute_yoy_change, _parse_trade_data, fetch
+from fetcher.sources.statcan import WDS_BASE, fetch
 
 
 @pytest.fixture
@@ -17,8 +17,7 @@ def statcan_config() -> SourceConfig:
     return SourceConfig(
         name="statcan",
         settings={
-            "base_url": "https://www150.statcan.gc.ca/t1/tbl1/en/dtl",
-            "table_id": "12-10-0011-01",
+            "base_url": WDS_BASE,
         },
         timeout=10,
         retry=RetryConfig(),
@@ -26,137 +25,121 @@ def statcan_config() -> SourceConfig:
 
 
 @pytest.fixture
-def trade_api_response() -> dict[str, Any]:
-    return {
-        "status": "ok",
-        "object": [
-            {
-                "hs_code": "1205",
-                "commodity_name": "Canola / rapeseed",
-                "exports": 5234000000,
-                "imports": 12000000,
-                "prev_exports": 4800000000,
-                "prev_imports": 11000000,
+def wds_response() -> list[dict[str, Any]]:
+    """Mock WDS API response for imports and exports."""
+    return [
+        {
+            "status": "SUCCESS",
+            "object": {
+                "vectorDataPoint": [
+                    {
+                        "refPer": "2025-09-01",
+                        "value": 7290.5,
+                        "scalarFactorCode": 6,
+                    },
+                    {
+                        "refPer": "2025-10-01",
+                        "value": 8070.3,
+                        "scalarFactorCode": 6,
+                    },
+                    {
+                        "refPer": "2025-11-01",
+                        "value": 7324.7,
+                        "scalarFactorCode": 6,
+                    },
+                ],
             },
-            {
-                "hs_code": "4407",
-                "commodity_name": "Lumber (wood sawn)",
-                "exports": 1890000000,
-                "imports": 45000000,
-                "prev_exports": 2100000000,
-                "prev_imports": 40000000,
+        },
+        {
+            "status": "SUCCESS",
+            "object": {
+                "vectorDataPoint": [
+                    {
+                        "refPer": "2025-09-01",
+                        "value": 2550.2,
+                        "scalarFactorCode": 6,
+                    },
+                    {
+                        "refPer": "2025-10-01",
+                        "value": 3737.1,
+                        "scalarFactorCode": 6,
+                    },
+                    {
+                        "refPer": "2025-11-01",
+                        "value": 3980.3,
+                        "scalarFactorCode": 6,
+                    },
+                ],
             },
-            {
-                "hs_code": "8471",
-                "commodity_name": "Machinery / computers",
-                "exports": 45000000,
-                "imports": 12300000000,
-                "prev_exports": 42000000,
-                "prev_imports": 11800000000,
-            },
-        ],
-    }
-
-
-def test_compute_yoy_change_positive() -> None:
-    """Test YoY change with positive growth."""
-    result = _compute_yoy_change(110.0, 100.0)
-    assert result == 10.0
-
-
-def test_compute_yoy_change_negative() -> None:
-    """Test YoY change with negative growth."""
-    result = _compute_yoy_change(90.0, 100.0)
-    assert result == -10.0
-
-
-def test_compute_yoy_change_zero_previous() -> None:
-    """Test YoY change when previous value is zero."""
-    result = _compute_yoy_change(100.0, 0.0)
-    assert result is None
-
-
-def test_parse_trade_data(trade_api_response: dict[str, Any]) -> None:
-    """Test parsing of StatCan API response."""
-    commodities = _parse_trade_data(trade_api_response)
-
-    assert len(commodities) == 3
-    canola = commodities[0]
-    assert canola["hs_code"] == "1205"
-    assert canola["exports_cad"] == 5234000000
-    assert canola["imports_cad"] == 12000000
-    assert canola["trade_balance_cad"] == 5234000000 - 12000000
-    assert canola["exports_yoy_pct"] is not None
-    assert canola["imports_yoy_pct"] is not None
-
-
-def test_parse_trade_data_computes_trade_balance(trade_api_response: dict[str, Any]) -> None:
-    """Test that trade balance is correctly computed."""
-    commodities = _parse_trade_data(trade_api_response)
-
-    machinery = commodities[2]
-    assert machinery["hs_code"] == "8471"
-    # Imports > exports so balance should be negative
-    assert machinery["trade_balance_cad"] < 0
-    expected_balance = 45000000 - 12300000000
-    assert machinery["trade_balance_cad"] == expected_balance
-
-
-def test_parse_trade_data_empty() -> None:
-    """Test parsing an empty response."""
-    commodities = _parse_trade_data({"data": []})
-    assert commodities == []
+        },
+    ]
 
 
 @respx.mock
 @pytest.mark.asyncio
 async def test_fetch_success(
     statcan_config: SourceConfig,
-    trade_api_response: dict[str, Any],
+    wds_response: list[dict[str, Any]],
 ) -> None:
-    """Test successful data fetch from StatCan."""
-    respx.get("https://www150.statcan.gc.ca/t1/tbl1/en/dtl").mock(
-        return_value=httpx.Response(200, json=trade_api_response)
-    )
+    """Test successful data fetch from StatCan WDS."""
+    respx.post(
+        f"{WDS_BASE}/getDataFromCubePidCoordAndLatestNPeriods"
+    ).mock(return_value=httpx.Response(200, json=wds_response))
 
     result = await fetch(statcan_config, "2025-01-17")
 
     assert result["date"] == "2025-01-17"
     assert result["country"] == "China"
-    assert len(result["commodities"]) == 3
-    assert "totals" in result
-    assert "total_exports_cad" in result["totals"]
-    assert "total_imports_cad" in result["totals"]
-    assert "trade_balance_cad" in result["totals"]
+    assert result["imports_cad_millions"] == 7324.7
+    assert result["exports_cad_millions"] == 3980.3
+    assert result["balance_cad_millions"] == round(3980.3 - 7324.7, 1)
+    assert result["reference_period"] == "2025-11-01"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_fetch_includes_series(
+    statcan_config: SourceConfig,
+    wds_response: list[dict[str, Any]],
+) -> None:
+    """Test that time series data is returned."""
+    respx.post(
+        f"{WDS_BASE}/getDataFromCubePidCoordAndLatestNPeriods"
+    ).mock(return_value=httpx.Response(200, json=wds_response))
+
+    result = await fetch(statcan_config, "2025-01-17")
+
+    assert "Imports from China" in result["series"]
+    assert "Exports to China" in result["series"]
+    assert len(result["series"]["Imports from China"]) == 3
+    assert len(result["series"]["Exports to China"]) == 3
 
 
 @respx.mock
 @pytest.mark.asyncio
 async def test_fetch_computes_totals(
     statcan_config: SourceConfig,
-    trade_api_response: dict[str, Any],
+    wds_response: list[dict[str, Any]],
 ) -> None:
-    """Test that aggregate totals are correctly computed."""
-    respx.get("https://www150.statcan.gc.ca/t1/tbl1/en/dtl").mock(
-        return_value=httpx.Response(200, json=trade_api_response)
-    )
+    """Test that aggregate totals use latest period values."""
+    respx.post(
+        f"{WDS_BASE}/getDataFromCubePidCoordAndLatestNPeriods"
+    ).mock(return_value=httpx.Response(200, json=wds_response))
 
     result = await fetch(statcan_config, "2025-01-17")
 
-    expected_exports = 5234000000 + 1890000000 + 45000000
-    expected_imports = 12000000 + 45000000 + 12300000000
-    assert result["totals"]["total_exports_cad"] == expected_exports
-    assert result["totals"]["total_imports_cad"] == expected_imports
-    assert result["totals"]["trade_balance_cad"] == expected_exports - expected_imports
+    assert result["totals"]["total_imports_cad"] == 7324.7
+    assert result["totals"]["total_exports_cad"] == 3980.3
+    assert result["totals"]["trade_balance_cad"] == round(3980.3 - 7324.7, 1)
 
 
 @respx.mock
 @pytest.mark.asyncio
 async def test_fetch_http_error(statcan_config: SourceConfig) -> None:
     """Test graceful handling of HTTP errors."""
-    respx.get("https://www150.statcan.gc.ca/t1/tbl1/en/dtl").mock(
-        return_value=httpx.Response(500)
-    )
+    respx.post(
+        f"{WDS_BASE}/getDataFromCubePidCoordAndLatestNPeriods"
+    ).mock(return_value=httpx.Response(500))
 
     result = await fetch(statcan_config, "2025-01-17")
 
@@ -168,9 +151,9 @@ async def test_fetch_http_error(statcan_config: SourceConfig) -> None:
 @pytest.mark.asyncio
 async def test_fetch_timeout(statcan_config: SourceConfig) -> None:
     """Test graceful handling of request timeouts."""
-    respx.get("https://www150.statcan.gc.ca/t1/tbl1/en/dtl").mock(
-        side_effect=httpx.ConnectTimeout("Connection timed out")
-    )
+    respx.post(
+        f"{WDS_BASE}/getDataFromCubePidCoordAndLatestNPeriods"
+    ).mock(side_effect=httpx.ConnectTimeout("Connection timed out"))
 
     result = await fetch(statcan_config, "2025-01-17")
 
