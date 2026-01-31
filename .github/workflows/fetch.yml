@@ -50,3 +50,4 @@ jobs:
           token: ${{ secrets.CC_PAT }}
           repository: ${{ github.repository_owner }}/cc-analysis
           event-type: new-raw-data
+          client-payload: '{"date": "$(date +%Y-%m-%d)"}'
