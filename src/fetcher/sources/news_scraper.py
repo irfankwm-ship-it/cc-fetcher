@@ -21,7 +21,11 @@ import feedparser
 import httpx
 from bs4 import BeautifulSoup
 
-from fetcher.config import SourceConfig
+from fetcher.config import RetryConfig, SourceConfig
+from fetcher.http import request_with_retry
+
+# Lighter retry for individual article fetches (many URLs, don't wait too long)
+DEFAULT_ARTICLE_RETRY = RetryConfig(max_retries=1, backoff_factor=0.3)
 
 logger = logging.getLogger(__name__)
 
@@ -230,8 +234,11 @@ async def _fetch_article_body(
     if not url:
         return ""
     try:
-        resp = await client.get(url, timeout=timeout)
-        resp.raise_for_status()
+        resp = await request_with_retry(
+            client, "GET", url,
+            retry=DEFAULT_ARTICLE_RETRY,
+            timeout=timeout,
+        )
         return _extract_article_body(resp.text)
     except (httpx.HTTPStatusError, httpx.RequestError, Exception) as exc:
         logger.debug("Failed to fetch article %s: %s", url[:80], exc)
@@ -286,8 +293,11 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
             feed_name = feed_cfg.get("name", feed_url)
 
             try:
-                resp = await client.get(feed_url, timeout=timeout)
-                resp.raise_for_status()
+                resp = await request_with_retry(
+                    client, "GET", feed_url,
+                    retry=config.retry,
+                    timeout=timeout,
+                )
                 raw_articles = _parse_feed(resp.text, feed_name)
 
                 for article in raw_articles:

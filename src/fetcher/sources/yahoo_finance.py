@@ -16,6 +16,7 @@ Handles market holidays gracefully (returns last available data).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any
@@ -278,21 +279,11 @@ def _fetch_stock_data(ticker_symbol: str, name: str, target_date: str) -> dict[s
         }
 
 
-async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
-    """Fetch Chinese market index data, sector indices, and top movers.
-
-    Args:
-        config: Source configuration with index, sector, and watchlist definitions.
-        date: Target date (YYYY-MM-DD).
-
-    Returns:
-        Dictionary with index data, sector data, and movers for all configured tickers.
-    """
+def _fetch_all_sync(config: SourceConfig, date: str) -> dict[str, Any]:
+    """Synchronous inner function for yfinance calls (runs in thread)."""
     indices_config = config.get("indices", DEFAULT_INDICES)
     sectors_config = config.get("sectors", DEFAULT_SECTORS)
     watchlist_config = config.get("watchlist", DEFAULT_WATCHLIST)
-
-    # yfinance is synchronous, so we call it directly
 
     # --- Indices ---
     indices: list[dict[str, Any]] = []
@@ -329,6 +320,25 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
 
         result = _fetch_stock_data(ticker_symbol, name, date)
         stock_results.append(result)
+
+    return {"indices": indices, "sectors": sectors, "stock_results": stock_results}
+
+
+async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
+    """Fetch Chinese market index data, sector indices, and top movers.
+
+    Args:
+        config: Source configuration with index, sector, and watchlist definitions.
+        date: Target date (YYYY-MM-DD).
+
+    Returns:
+        Dictionary with index data, sector data, and movers for all configured tickers.
+    """
+    # yfinance is synchronous — run in a thread to avoid blocking the event loop
+    raw = await asyncio.to_thread(_fetch_all_sync, config, date)
+    indices = raw["indices"]
+    sectors = raw["sectors"]
+    stock_results = raw["stock_results"]
 
     # Filter out stocks with no data, then sort by change_pct descending
     valid_stocks = [s for s in stock_results if s.get("change_pct") is not None]

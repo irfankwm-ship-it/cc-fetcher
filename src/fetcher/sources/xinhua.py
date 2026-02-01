@@ -18,6 +18,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from fetcher.config import SourceConfig
+from fetcher.http import request_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -187,8 +188,11 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     async with httpx.AsyncClient(follow_redirects=True) as client:
         for url in urls:
             try:
-                resp = await client.get(url, timeout=timeout)
-                resp.raise_for_status()
+                resp = await request_with_retry(
+                    client, "GET", url,
+                    retry=config.retry,
+                    timeout=timeout,
+                )
                 html = resp.text
                 page_articles = _extract_articles_from_html(html, url)
                 for article in page_articles:
