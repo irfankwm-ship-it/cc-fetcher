@@ -1,9 +1,9 @@
 """Fetcher for Xinhua state media content.
 
-Scrapes Xinhua English (and optionally Chinese) pages for:
-  - Canada-related content
-  - Major domestic/foreign policy announcements
-  - Belt and Road / economic initiative coverage
+Scrapes Xinhua English section pages (english.news.cn) for:
+  - China domestic politics and government statements
+  - Foreign policy and geopolitical news
+  - Economic and infrastructure announcements
 
 Uses BeautifulSoup for HTML parsing.
 """
@@ -21,7 +21,14 @@ from fetcher.config import SourceConfig
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_URL = "http://www.xinhuanet.com/english/"
+DEFAULT_URL = "http://english.news.cn/"
+
+# Section pages to scrape for broader coverage
+SECTION_URLS = [
+    "http://english.news.cn/china/index.htm",
+    "http://english.news.cn/world/index.htm",
+    "http://english.news.cn/",
+]
 
 CANADA_KEYWORDS = [
     "Canada", "Canadian", "Ottawa", "Trudeau",
@@ -34,11 +41,12 @@ POLICY_KEYWORDS = [
     "foreign policy", "trade war", "sanctions", "tariff",
     "BRICS", "SCO", "RCEP", "ASEAN",
     "Taiwan", "South China Sea", "military",
-    "semiconductor", "technology", "AI",
+    "semiconductor",
     "economy", "GDP", "trade", "export",
     "Hong Kong", "Xinjiang", "Tibet",
     "NPC", "CPPCC", "CPC", "Communist Party",
     "diplomacy", "ambassador", "minister",
+    "infrastructure", "railway", "port",
 ]
 
 
@@ -160,7 +168,7 @@ def _filter_relevant(
 
 
 async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
-    """Fetch and filter Xinhua content.
+    """Fetch and filter Xinhua content from multiple section pages.
 
     Args:
         config: Source configuration with URL and timeout.
@@ -169,30 +177,40 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     Returns:
         Dictionary with filtered articles and metadata.
     """
-    url = config.get("url", DEFAULT_URL)
+    urls = config.get("section_urls", SECTION_URLS)
     timeout = config.timeout
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        try:
-            resp = await client.get(url, timeout=timeout)
-            resp.raise_for_status()
-            html = resp.text
-        except httpx.HTTPStatusError as exc:
-            logger.error("Xinhua HTTP error: %s", exc.response.status_code)
-            return {
-                "date": date,
-                "error": f"HTTP {exc.response.status_code}",
-                "articles": [],
-            }
-        except httpx.RequestError as exc:
-            logger.error("Xinhua request failed: %s", exc)
-            return {
-                "date": date,
-                "error": str(exc),
-                "articles": [],
-            }
+    all_articles: list[dict[str, Any]] = []
+    seen_titles: set[str] = set()
+    errors: list[str] = []
 
-    all_articles = _extract_articles_from_html(html, url)
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        for url in urls:
+            try:
+                resp = await client.get(url, timeout=timeout)
+                resp.raise_for_status()
+                html = resp.text
+                page_articles = _extract_articles_from_html(html, url)
+                for article in page_articles:
+                    title = article.get("title", "")
+                    if title and title not in seen_titles:
+                        seen_titles.add(title)
+                        all_articles.append(article)
+                logger.info("Xinhua %s: %d articles", url, len(page_articles))
+            except httpx.HTTPStatusError as exc:
+                logger.warning("Xinhua %s HTTP error: %s", url, exc.response.status_code)
+                errors.append(f"{url}: HTTP {exc.response.status_code}")
+            except httpx.RequestError as exc:
+                logger.warning("Xinhua %s request failed: %s", url, exc)
+                errors.append(f"{url}: {exc}")
+
+    if not all_articles and errors:
+        return {
+            "date": date,
+            "error": "; ".join(errors),
+            "articles": [],
+        }
+
     relevant = _filter_relevant(all_articles, CANADA_KEYWORDS, POLICY_KEYWORDS)
 
     return {
@@ -200,5 +218,5 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
         "articles": relevant,
         "total_scraped": len(all_articles),
         "total_relevant": len(relevant),
-        "source_url": url,
+        "source_url": urls[0] if urls else DEFAULT_URL,
     }

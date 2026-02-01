@@ -1,8 +1,8 @@
-"""RSS feed scraper with keyword filtering for Canada-China news.
+"""RSS feed scraper with keyword filtering for China and Canada-China news.
 
-Fetches from configurable RSS feeds (Reuters, AP, Globe and Mail, CBC,
-South China Morning Post) and filters for Canada-China relevant content
-using bilingual keyword lists.
+Fetches from configurable RSS feeds covering political, government,
+business, infrastructure, and geopolitical news about China.
+Filters for China-relevant content using keyword matching.
 
 Categories: diplomatic, trade, military, technology, political, economic, social, legal
 """
@@ -22,15 +22,44 @@ from fetcher.config import SourceConfig
 logger = logging.getLogger(__name__)
 
 DEFAULT_FEEDS = [
+    # -- Canadian media (bilateral coverage) --
     {
         "url": "https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/world/",
         "name": "Globe and Mail",
     },
     {"url": "https://www.cbc.ca/webfeed/rss/rss-world", "name": "CBC"},
+    # -- SCMP section feeds (broad China coverage) --
     {"url": "https://www.scmp.com/rss/4/feed", "name": "SCMP"},
+    {"url": "https://www.scmp.com/rss/318198/feed", "name": "SCMP Politics"},
+    {"url": "https://www.scmp.com/rss/318199/feed", "name": "SCMP Diplomacy"},
+    {"url": "https://www.scmp.com/rss/318421/feed", "name": "SCMP Economy"},
+    {"url": "https://www.scmp.com/rss/92/feed", "name": "SCMP Business"},
+    {"url": "https://www.scmp.com/rss/320663/feed", "name": "SCMP Tech"},
+    {"url": "https://www.scmp.com/rss/323047/feed", "name": "SCMP Geopolitics"},
+    # -- International outlets --
+    {"url": "https://feeds.bbci.co.uk/news/world/asia/china/rss.xml", "name": "BBC"},
+    {"url": "https://thediplomat.com/feed/", "name": "The Diplomat"},
+    {"url": "https://asiatimes.com/feed/", "name": "Asia Times"},
+    {"url": "https://asia.nikkei.com/rss/feed/nar", "name": "Nikkei Asia"},
 ]
 
-DEFAULT_KEYWORDS = ["China", "Beijing", "Canada-China", "PRC"]
+DEFAULT_KEYWORDS = [
+    # Core country / government — unambiguous
+    "China", "Chinese", "Beijing", "Xi Jinping",
+    "State Council", "Communist Party",
+    # Bilateral
+    "Canada-China",
+    # Geopolitical
+    "Taiwan", "South China Sea", "Hong Kong", "Xinjiang", "Tibet",
+    "Belt and Road",
+    # Economic / business — China-specific terms
+    "yuan", "renminbi", "Huawei", "Shanghai", "Shenzhen",
+    "People's Liberation Army",
+]
+
+# Short acronyms that need word-boundary matching to avoid false positives
+# (e.g. "PRC" in "prices", "BRI" in "British", "NPC" in "NPC votes")
+_ACRONYM_KEYWORDS = ["PRC", "BRI", "CPC", "NPC", "PLA", "CPPCC"]
 
 # Bilingual keyword sets for category classification
 CATEGORY_KEYWORDS: dict[str, list[str]] = {
@@ -70,9 +99,19 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
 
 
 def _matches_keywords(text: str, keywords: list[str]) -> bool:
-    """Check if text contains any of the given keywords (case-insensitive)."""
+    """Check if text contains any of the given keywords (case-insensitive).
+
+    Short acronyms in _ACRONYM_KEYWORDS use word-boundary matching
+    to avoid false positives (e.g. "PRC" inside "prices").
+    """
     text_lower = text.lower()
-    return any(kw.lower() in text_lower for kw in keywords)
+    if any(kw.lower() in text_lower for kw in keywords):
+        return True
+    # Word-boundary check for acronyms
+    for acr in _ACRONYM_KEYWORDS:
+        if re.search(rf"\b{re.escape(acr)}\b", text, re.IGNORECASE):
+            return True
+    return False
 
 
 def _classify_article(text: str) -> list[str]:
@@ -141,7 +180,7 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     seen_titles: list[str] = []
     feed_errors: list[dict[str, str]] = []
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         for feed_cfg in feeds:
             feed_url = feed_cfg.get("url", "")
             feed_name = feed_cfg.get("name", feed_url)
