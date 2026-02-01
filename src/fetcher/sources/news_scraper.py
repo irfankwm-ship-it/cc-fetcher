@@ -200,16 +200,22 @@ def _extract_article_body(html: str) -> str:
         if container:
             break
 
-    if container:
-        paragraphs = container.find_all("p")
-    else:
-        paragraphs = soup.find_all("p")
+    scope = container or soup
 
-    # Collect text from paragraphs, skip very short ones (nav cruft)
+    # Collect text from paragraphs, headings, and list items
+    seen_text: set[str] = set()
     parts: list[str] = []
-    for p in paragraphs:
-        text = p.get_text(strip=True)
-        if len(text) > 40:
+    for tag in scope.find_all(["h2", "h3", "h4", "li", "p"]):
+        text = tag.get_text(strip=True)
+        if len(text) < 20 or text in seen_text:
+            continue
+        seen_text.add(text)
+        # Prefix headings/list items so the summarizer can identify them
+        if tag.name in ("h2", "h3", "h4"):
+            parts.append(f"[heading] {text}")
+        elif tag.name == "li":
+            parts.append(f"[item] {text}")
+        else:
             parts.append(text)
 
     return "\n".join(parts)
