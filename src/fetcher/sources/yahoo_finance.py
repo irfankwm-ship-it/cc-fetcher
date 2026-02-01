@@ -34,7 +34,7 @@ DEFAULT_INDICES = [
 ]
 
 DEFAULT_SECTORS = [
-    {"ticker": "^HSTECH", "name": "Hang Seng TECH"},
+    {"ticker": "3067.HK", "name": "Hang Seng TECH ETF"},
     {"ticker": "399006.SZ", "name": "ChiNext Composite"},
     {"ticker": "000016.SS", "name": "SSE 50"},
     {"ticker": "399330.SZ", "name": "Shenzhen 100"},

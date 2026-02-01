@@ -84,42 +84,46 @@ def wds_response() -> list[dict[str, Any]]:
 
 
 def _make_commodity_response(
-    num_commodities: int = 6,
     *,
     all_success: bool = True,
 ) -> list[dict[str, Any]]:
     """Build a mock WDS response for commodity coordinate pairs.
 
     Each commodity produces two entries (import, export).
+    The WDS batch API sorts results by vectorId, so we include
+    coordinate fields to allow coordinate-based mapping.
     """
     results: list[dict[str, Any]] = []
-    for i in range(num_commodities):
-        import_val_prev = 100.0 + i * 10
-        import_val_latest = 110.0 + i * 10
-        export_val_prev = 50.0 + i * 5
-        export_val_latest = 55.0 + i * 5
+    for i, comm in enumerate(COMMODITY_COORDS):
+        import_val_prev = (100.0 + i * 10) * 1000  # thousands
+        import_val_latest = (110.0 + i * 10) * 1000
+        export_val_prev = (50.0 + i * 5) * 1000
+        export_val_latest = (55.0 + i * 5) * 1000
 
         if all_success:
             results.append({
                 "status": "SUCCESS",
                 "object": {
+                    "coordinate": comm["import_coordinate"],
+                    "vectorId": 1000000 + i * 2,
                     "vectorDataPoint": [
-                        {"refPer": "2025-10-01", "value": import_val_prev, "scalarFactorCode": 6},
-                        {"refPer": "2025-11-01", "value": import_val_latest, "scalarFactorCode": 6},
+                        {"refPer": "2025-10-01", "value": import_val_prev, "scalarFactorCode": 3},
+                        {"refPer": "2025-11-01", "value": import_val_latest, "scalarFactorCode": 3},
                     ],
                 },
             })
             results.append({
                 "status": "SUCCESS",
                 "object": {
+                    "coordinate": comm["export_coordinate"],
+                    "vectorId": 1000001 + i * 2,
                     "vectorDataPoint": [
-                        {"refPer": "2025-10-01", "value": export_val_prev, "scalarFactorCode": 6},
-                        {"refPer": "2025-11-01", "value": export_val_latest, "scalarFactorCode": 6},
+                        {"refPer": "2025-10-01", "value": export_val_prev, "scalarFactorCode": 3},
+                        {"refPer": "2025-11-01", "value": export_val_latest, "scalarFactorCode": 3},
                     ],
                 },
             })
         else:
-            # Mix of successes and failures
             results.append({"status": "FAILED"})
             results.append({"status": "FAILED"})
     return results
@@ -296,8 +300,8 @@ async def test_fetch_commodities_success(
     assert len(result["commodities"]) == len(COMMODITY_COORDS)
 
     first = result["commodities"][0]
-    assert first["name"] == "Energy Products"
-    assert first["name_zh"] == "\u80fd\u6e90\u4ea7\u54c1"
+    assert first["name"] == "Electronic & Electrical Equipment"
+    assert first["name_zh"] == "电子电气设备"
     assert first["import_cad_millions"] is not None
     assert first["export_cad_millions"] is not None
     assert first["balance_cad_millions"] is not None
@@ -353,24 +357,29 @@ async def test_fetch_commodities_partial_failure(
     wds_response: list[dict[str, Any]],
 ) -> None:
     """Partial commodity failures should return only the successful ones."""
+    first_comm = COMMODITY_COORDS[0]
     # Build a response where first commodity succeeds, rest fail
     results: list[dict[str, Any]] = []
-    # First commodity: import SUCCESS, export SUCCESS
+    # First commodity: import SUCCESS, export SUCCESS (values in thousands)
     results.append({
         "status": "SUCCESS",
         "object": {
+            "coordinate": first_comm["import_coordinate"],
+            "vectorId": 1000000,
             "vectorDataPoint": [
-                {"refPer": "2025-10-01", "value": 100.0, "scalarFactorCode": 6},
-                {"refPer": "2025-11-01", "value": 120.0, "scalarFactorCode": 6},
+                {"refPer": "2025-10-01", "value": 100000.0, "scalarFactorCode": 3},
+                {"refPer": "2025-11-01", "value": 120000.0, "scalarFactorCode": 3},
             ],
         },
     })
     results.append({
         "status": "SUCCESS",
         "object": {
+            "coordinate": first_comm["export_coordinate"],
+            "vectorId": 1000001,
             "vectorDataPoint": [
-                {"refPer": "2025-10-01", "value": 50.0, "scalarFactorCode": 6},
-                {"refPer": "2025-11-01", "value": 60.0, "scalarFactorCode": 6},
+                {"refPer": "2025-10-01", "value": 50000.0, "scalarFactorCode": 3},
+                {"refPer": "2025-11-01", "value": 60000.0, "scalarFactorCode": 3},
             ],
         },
     })
@@ -391,9 +400,9 @@ async def test_fetch_commodities_partial_failure(
     # Only the first commodity should appear
     assert len(result["commodities"]) == 1
     comm = result["commodities"][0]
-    assert comm["name"] == "Energy Products"
-    assert comm["import_cad_millions"] == 120.0
-    assert comm["export_cad_millions"] == 60.0
+    assert comm["name"] == "Electronic & Electrical Equipment"
+    assert comm["import_cad_millions"] == 120.0  # 120000 / 1000
+    assert comm["export_cad_millions"] == 60.0   # 60000 / 1000
     assert comm["balance_cad_millions"] == round(60.0 - 120.0, 1)
 
 
@@ -404,23 +413,28 @@ async def test_fetch_commodities_trend_calculation(
     wds_response: list[dict[str, Any]],
 ) -> None:
     """Test that commodity trend is calculated from total trade volume."""
+    first_comm = COMMODITY_COORDS[0]
     # One commodity: imports go up, exports go up -> trend "up"
     results: list[dict[str, Any]] = []
     results.append({
         "status": "SUCCESS",
         "object": {
+            "coordinate": first_comm["import_coordinate"],
+            "vectorId": 1000000,
             "vectorDataPoint": [
-                {"refPer": "2025-10-01", "value": 100.0, "scalarFactorCode": 6},
-                {"refPer": "2025-11-01", "value": 200.0, "scalarFactorCode": 6},
+                {"refPer": "2025-10-01", "value": 100000.0, "scalarFactorCode": 3},
+                {"refPer": "2025-11-01", "value": 200000.0, "scalarFactorCode": 3},
             ],
         },
     })
     results.append({
         "status": "SUCCESS",
         "object": {
+            "coordinate": first_comm["export_coordinate"],
+            "vectorId": 1000001,
             "vectorDataPoint": [
-                {"refPer": "2025-10-01", "value": 100.0, "scalarFactorCode": 6},
-                {"refPer": "2025-11-01", "value": 200.0, "scalarFactorCode": 6},
+                {"refPer": "2025-10-01", "value": 100000.0, "scalarFactorCode": 3},
+                {"refPer": "2025-11-01", "value": 200000.0, "scalarFactorCode": 3},
             ],
         },
     })
