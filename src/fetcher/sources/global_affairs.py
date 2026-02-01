@@ -11,6 +11,7 @@ API endpoint:
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
@@ -127,14 +128,30 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
             except httpx.RequestError as exc:
                 logger.warning("GAC %s request error: %s", lang, exc)
 
+    # Filter by recency — only keep articles from the last 48 hours
+    cutoff = datetime.strptime(date, "%Y-%m-%d") - timedelta(hours=48)
+    recent_articles: list[dict[str, Any]] = []
+    for article in all_articles:
+        article_date = article.get("date", "")
+        if article_date and len(article_date) >= 10:
+            try:
+                dt = datetime.strptime(article_date[:10], "%Y-%m-%d")
+                if dt >= cutoff:
+                    recent_articles.append(article)
+            except ValueError:
+                recent_articles.append(article)  # keep if unparseable
+        else:
+            recent_articles.append(article)  # keep if no date
+
     # Filter for China-related content
     keywords = config.get("keywords", CHINA_KEYWORDS)
-    relevant = _filter_china_related(all_articles, keywords)
+    relevant = _filter_china_related(recent_articles, keywords)
 
     return {
         "date": date,
         "articles": relevant,
         "total_scraped": len(all_articles),
+        "total_recent": len(recent_articles),
         "total_relevant": len(relevant),
         "source_url": f"{api_base}/en/v2?dept={dept}",
     }

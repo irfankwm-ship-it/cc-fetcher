@@ -110,6 +110,12 @@ def _extract_articles_from_html(html: str, base_url: str) -> list[dict[str, Any]
         if url and not url.startswith("http"):
             url = base_url.rstrip("/") + "/" + url.lstrip("/")
 
+        # Try to extract date from URL pattern like /2026-01/29/c_xxxxx.htm
+        if not date and url:
+            url_date_match = re.search(r"/(\d{4}-\d{2})/(\d{2})/", url)
+            if url_date_match:
+                date = f"{url_date_match.group(1)}-{url_date_match.group(2)}"
+
         articles.append({
             "title": title,
             "body": body[:500] if body else "",
