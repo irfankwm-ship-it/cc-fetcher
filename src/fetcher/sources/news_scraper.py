@@ -3,12 +3,15 @@
 Fetches from configurable RSS feeds covering political, government,
 business, infrastructure, and geopolitical news about China.
 Filters for China-relevant content using keyword matching.
+After filtering, fetches each article's full page to extract body text
+for proper summarization.
 
 Categories: diplomatic, trade, military, technology, political, economic, social, legal
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from difflib import SequenceMatcher
@@ -16,6 +19,7 @@ from typing import Any
 
 import feedparser
 import httpx
+from bs4 import BeautifulSoup
 
 from fetcher.config import SourceConfig
 
@@ -162,8 +166,98 @@ def _parse_feed(feed_content: str, feed_name: str) -> list[dict[str, Any]]:
     return articles
 
 
+def _extract_article_body(html: str) -> str:
+    """Extract the main article body text from an HTML page.
+
+    Tries common article container selectors, then falls back to
+    collecting all <p> tags from the page.  Returns cleaned plain text.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Remove noise elements
+    for tag in soup.select("script, style, nav, footer, header, aside, .ad, .ads, .sidebar"):
+        tag.decompose()
+
+    # Try common article body selectors (ordered by specificity)
+    selectors = [
+        "article .article-body",
+        "article .story-body",
+        "div.article__body",
+        "div.article-body",
+        "div.story-body",
+        "div[itemprop='articleBody']",
+        "div.post-content",
+        "div.entry-content",
+        "div.article-content",
+        "div.content__body",
+        "article",
+        "main",
+    ]
+
+    container = None
+    for sel in selectors:
+        container = soup.select_one(sel)
+        if container:
+            break
+
+    if container:
+        paragraphs = container.find_all("p")
+    else:
+        paragraphs = soup.find_all("p")
+
+    # Collect text from paragraphs, skip very short ones (nav cruft)
+    parts: list[str] = []
+    for p in paragraphs:
+        text = p.get_text(strip=True)
+        if len(text) > 40:
+            parts.append(text)
+
+    return "\n".join(parts)
+
+
+async def _fetch_article_body(
+    client: httpx.AsyncClient,
+    url: str,
+    timeout: float = 10,
+) -> str:
+    """Fetch a single article URL and extract body text."""
+    if not url:
+        return ""
+    try:
+        resp = await client.get(url, timeout=timeout)
+        resp.raise_for_status()
+        return _extract_article_body(resp.text)
+    except (httpx.HTTPStatusError, httpx.RequestError, Exception) as exc:
+        logger.debug("Failed to fetch article %s: %s", url[:80], exc)
+        return ""
+
+
+async def _enrich_articles_with_body(
+    client: httpx.AsyncClient,
+    articles: list[dict[str, Any]],
+    concurrency: int = 10,
+) -> None:
+    """Fetch full article bodies for a batch of articles.
+
+    Updates each article's ``body_text`` in place.  Uses a semaphore
+    to limit concurrent requests.
+    """
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _fetch_one(article: dict[str, Any]) -> None:
+        async with sem:
+            body = await _fetch_article_body(client, article.get("url", ""))
+            if body:
+                article["body_text"] = body[:3000]
+
+    await asyncio.gather(*[_fetch_one(a) for a in articles])
+
+
 async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     """Fetch and filter news articles from RSS feeds.
+
+    After keyword filtering, fetches each article's full page to
+    extract body text for proper summarization downstream.
 
     Args:
         config: Source configuration with feeds list and keywords.
@@ -212,6 +306,12 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
             except httpx.RequestError as exc:
                 logger.warning("Feed %s request error: %s", feed_name, exc)
                 feed_errors.append({"feed": feed_name, "error": str(exc)})
+
+        # Fetch full article bodies for all matched articles
+        logger.info("Fetching full article bodies for %d articles...", len(all_articles))
+        await _enrich_articles_with_body(client, all_articles)
+        enriched = sum(1 for a in all_articles if a.get("body_text"))
+        logger.info("Enriched %d/%d articles with full body text", enriched, len(all_articles))
 
     return {
         "date": date,
