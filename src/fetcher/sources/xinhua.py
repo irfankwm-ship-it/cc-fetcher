@@ -43,11 +43,14 @@ POLICY_KEYWORDS = [
     "BRICS", "SCO", "RCEP", "ASEAN",
     "Taiwan", "South China Sea", "military",
     "semiconductor",
-    "economy", "GDP", "trade", "export",
     "Hong Kong", "Xinjiang", "Tibet",
     "NPC", "CPPCC", "CPC", "Communist Party",
-    "diplomacy", "ambassador", "minister",
-    "infrastructure", "railway", "port",
+]
+
+# Articles must mention at least one China indicator word (unless they
+# matched a CANADA_KEYWORD, which is inherently bilateral).
+CHINA_INDICATORS = [
+    "China", "Chinese", "Beijing", "PRC", "mainland",
 ]
 
 
@@ -136,6 +139,11 @@ def _extract_articles_from_html(html: str, base_url: str) -> list[dict[str, Any]
     return articles
 
 
+def _kw_match(keyword: str, text: str) -> bool:
+    """Match a keyword against text using word boundaries."""
+    return bool(re.search(r'\b' + re.escape(keyword) + r'\b', text, re.IGNORECASE))
+
+
 def _filter_relevant(
     articles: list[dict[str, Any]],
     canada_keywords: list[str],
@@ -144,26 +152,41 @@ def _filter_relevant(
     """Filter articles for Canada-related and major policy content.
 
     Each matching article gets a 'relevance' tag indicating why it matched.
+    Articles must also pass a China-context check (mention China/Chinese/
+    Beijing/PRC/mainland) unless they matched a Canada keyword.
     """
     filtered: list[dict[str, Any]] = []
 
     for article in articles:
-        searchable = f"{article['title']} {article.get('body', '')}".lower()
+        searchable = f"{article['title']} {article.get('body', '')}"
         tags: list[str] = []
+        has_canada = False
 
         for kw in canada_keywords:
-            if kw.lower() in searchable:
+            if _kw_match(kw, searchable):
                 tags.append(f"canada:{kw}")
+                has_canada = True
                 break
 
         for kw in policy_keywords:
-            if kw.lower() in searchable:
+            if _kw_match(kw, searchable):
                 tags.append(f"policy:{kw}")
                 break
 
-        if tags:
-            article["relevance_tags"] = tags
-            filtered.append(article)
+        if not tags:
+            continue
+
+        # China-context gate: unless the article matched a Canada keyword
+        # (inherently bilateral), it must also mention a China indicator.
+        if not has_canada:
+            has_china = any(
+                _kw_match(ci, searchable) for ci in CHINA_INDICATORS
+            )
+            if not has_china:
+                continue
+
+        article["relevance_tags"] = tags
+        filtered.append(article)
 
     return filtered
 

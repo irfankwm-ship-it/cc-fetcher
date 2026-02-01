@@ -17,6 +17,28 @@ import re
 from difflib import SequenceMatcher
 from typing import Any
 
+# Regex patterns for paywall / CTA / newsletter-signup boilerplate.
+# If any pattern matches a paragraph, that paragraph is skipped.
+_BOILERPLATE_PATTERNS = [
+    re.compile(p)
+    for p in [
+        r"(?i)members?\s+of\s+\w+\$?\d+.{0,30}(?:unlock|benefit|join|subscribe)",
+        r"(?i)you'?ve\s+read\s+\d+\s+article",
+        r"(?i)subscribe\s+(?:now|today|to)\s+(?:read|unlock|access|get)",
+        r"(?i)sign\s+up\s+(?:for|to)\s+(?:our|the|a)\s+(?:newsletter|daily|free)",
+        r"(?i)(?:join|become)\s+(?:a\s+)?(?:member|subscriber|patron)",
+        r"(?i)this\s+(?:article|story|content)\s+is\s+(?:for|available\s+to)\s+(?:premium|paid|subscriber)",
+        r"(?i)(?:free|premium)\s+(?:trial|access|membership)",
+        r"(?i)already\s+(?:a\s+)?(?:member|subscriber)\??\s*(?:log|sign)\s*in",
+        r"(?i)support\s+(?:our|independent|quality)\s+(?:journalism|reporting|team)",
+        r"(?i)(?:click|tap)\s+here\s+to\s+(?:subscribe|read|join|sign)",
+        r"(?i)member\s+benefits?",
+        r"(?i)(?:not\s+a\s+)?paywall.{0,30}(?:member|free|independent|thanks)",
+        r"(?i)thanks\s+to\s+(?:our\s+)?members",
+        r"(?i)no\s+ads.{0,20}no\s+pop.?ups",
+    ]
+]
+
 import feedparser
 import httpx
 from bs4 import BeautifulSoup
@@ -43,7 +65,6 @@ DEFAULT_FEEDS = [
     {"url": "https://www.scmp.com/rss/318421/feed", "name": "SCMP Economy"},
     {"url": "https://www.scmp.com/rss/92/feed", "name": "SCMP Business"},
     {"url": "https://www.scmp.com/rss/320663/feed", "name": "SCMP Tech"},
-    {"url": "https://www.scmp.com/rss/323047/feed", "name": "SCMP Geopolitics"},
     # -- International outlets --
     {"url": "https://feeds.bbci.co.uk/news/world/asia/china/rss.xml", "name": "BBC"},
     {"url": "https://thediplomat.com/feed/", "name": "The Diplomat"},
@@ -170,6 +191,11 @@ def _parse_feed(feed_content: str, feed_name: str) -> list[dict[str, Any]]:
     return articles
 
 
+def _is_boilerplate(text: str) -> bool:
+    """Return True if text matches a paywall/CTA boilerplate pattern."""
+    return any(pat.search(text) for pat in _BOILERPLATE_PATTERNS)
+
+
 def _extract_article_body(html: str) -> str:
     """Extract the main article body text from an HTML page.
 
@@ -178,8 +204,14 @@ def _extract_article_body(html: str) -> str:
     """
     soup = BeautifulSoup(html, "html.parser")
 
-    # Remove noise elements
-    for tag in soup.select("script, style, nav, footer, header, aside, .ad, .ads, .sidebar"):
+    # Remove noise elements (including paywall/CTA containers)
+    for tag in soup.select(
+        "script, style, nav, footer, header, aside, "
+        ".ad, .ads, .sidebar, "
+        ".paywall, .subscription, .membership, .cta, "
+        ".newsletter-signup, .subscribe-box, .piano-offer, "
+        "[data-paywall], [data-piano], [data-subscriber]"
+    ):
         tag.decompose()
 
     # Try common article body selectors (ordered by specificity)
@@ -212,6 +244,12 @@ def _extract_article_body(html: str) -> str:
     for tag in scope.find_all(["h2", "h3", "h4", "li", "p"]):
         text = tag.get_text(strip=True)
         if len(text) < 20 or text in seen_text:
+            continue
+        # Skip emoji-prefixed lines (e.g. HKFP "💡You've read...")
+        if re.match(r'^[\U0001F300-\U0001FAD6\u2600-\u27BF]', text):
+            continue
+        # Skip paywall / CTA boilerplate
+        if _is_boilerplate(text):
             continue
         seen_text.add(text)
         # Prefix headings/list items so the summarizer can identify them

@@ -66,6 +66,12 @@ DEFAULT_WATCHLIST = [
     {"ticker": "6862.HK", "name": "Haidilao"},
 ]
 
+DEFAULT_CURRENCY_PAIRS = [
+    {"ticker": "USDCNY=X", "name": "USD/CNY"},
+    {"ticker": "CADCNY=X", "name": "CAD/CNY"},
+    {"ticker": "USDCAD=X", "name": "USD/CAD"},
+]
+
 SPARKLINE_DAYS = 5
 MOVERS_COUNT = 5
 
@@ -279,11 +285,81 @@ def _fetch_stock_data(ticker_symbol: str, name: str, target_date: str) -> dict[s
         }
 
 
+def _fetch_currency_pair(ticker_symbol: str, name: str, target_date: str) -> dict[str, Any]:
+    """Fetch exchange rate data for a currency pair.
+
+    Args:
+        ticker_symbol: yfinance forex ticker (e.g. "USDCNY=X").
+        name: Human-readable pair name (e.g. "USD/CNY").
+        target_date: Target date as YYYY-MM-DD.
+
+    Returns:
+        Dictionary with rate, change_pct, and sparkline.
+    """
+    try:
+        ticker = yf.Ticker(ticker_symbol)
+
+        end_date = datetime.strptime(target_date, "%Y-%m-%d") + timedelta(days=1)
+        start_date = end_date - timedelta(days=SPARKLINE_DAYS + 5)
+
+        start_str = start_date.strftime("%Y-%m-%d")
+        end_str = end_date.strftime("%Y-%m-%d")
+        hist = ticker.history(start=start_str, end=end_str)
+
+        if hist.empty:
+            logger.warning(
+                "No FX data available for %s (%s) near %s",
+                name, ticker_symbol, target_date,
+            )
+            return {
+                "ticker": ticker_symbol,
+                "name": name,
+                "rate": None,
+                "change_pct": None,
+                "sparkline": [],
+            }
+
+        recent = hist.tail(SPARKLINE_DAYS + 1)
+        closes = recent["Close"].tolist()
+        sparkline = [round(float(c), 4) for c in closes[-SPARKLINE_DAYS:]]
+
+        current_close = float(closes[-1])
+        prev_close = float(closes[-2]) if len(closes) >= 2 else current_close
+        if prev_close:
+            change_pct = round(((current_close - prev_close) / prev_close) * 100, 4)
+        else:
+            change_pct = 0.0
+
+        latest_date = recent.index[-1].strftime("%Y-%m-%d")
+
+        return {
+            "ticker": ticker_symbol,
+            "name": name,
+            "rate": round(current_close, 4),
+            "change_pct": change_pct,
+            "prev_rate": round(prev_close, 4),
+            "sparkline": sparkline,
+            "latest_date": latest_date,
+        }
+
+    except Exception as exc:
+        logger.error("Error fetching FX %s (%s): %s", name, ticker_symbol, exc)
+        return {
+            "ticker": ticker_symbol,
+            "name": name,
+            "rate": None,
+            "change_pct": None,
+            "sparkline": [],
+            "error": str(exc),
+        }
+
+
 def _fetch_all_sync(config: SourceConfig, date: str) -> dict[str, Any]:
     """Synchronous inner function for yfinance calls (runs in thread)."""
     indices_config = config.get("indices", DEFAULT_INDICES)
     sectors_config = config.get("sectors", DEFAULT_SECTORS)
     watchlist_config = config.get("watchlist", DEFAULT_WATCHLIST)
+    currency_config = config.get("currency_pairs", DEFAULT_CURRENCY_PAIRS)
 
     # --- Indices ---
     indices: list[dict[str, Any]] = []
@@ -321,7 +397,24 @@ def _fetch_all_sync(config: SourceConfig, date: str) -> dict[str, Any]:
         result = _fetch_stock_data(ticker_symbol, name, date)
         stock_results.append(result)
 
-    return {"indices": indices, "sectors": sectors, "stock_results": stock_results}
+    # --- Currency Pairs ---
+    currency_results: list[dict[str, Any]] = []
+    for pair_cfg in currency_config:
+        ticker_symbol = pair_cfg.get("ticker", "")
+        name = pair_cfg.get("name", ticker_symbol)
+
+        if not ticker_symbol:
+            continue
+
+        result = _fetch_currency_pair(ticker_symbol, name, date)
+        currency_results.append(result)
+
+    return {
+        "indices": indices,
+        "sectors": sectors,
+        "stock_results": stock_results,
+        "currency_pairs": currency_results,
+    }
 
 
 async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
@@ -339,6 +432,7 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     indices = raw["indices"]
     sectors = raw["sectors"]
     stock_results = raw["stock_results"]
+    currency_pairs = raw["currency_pairs"]
 
     # Filter out stocks with no data, then sort by change_pct descending
     valid_stocks = [s for s in stock_results if s.get("change_pct") is not None]
@@ -351,6 +445,7 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     available = [i for i in indices if i.get("value") is not None]
     all_holiday = all(i.get("market_holiday", False) for i in available) if available else True
     sectors_available = [s for s in sectors if s.get("value") is not None]
+    currency_available = [c for c in currency_pairs if c.get("rate") is not None]
 
     return {
         "date": date,
@@ -360,6 +455,7 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
             "gainers": top_gainers,
             "losers": top_losers,
         },
+        "currency_pairs": currency_pairs,
         "summary": {
             "indices_fetched": len(available),
             "indices_failed": len(indices) - len(available),
@@ -367,6 +463,8 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
             "sectors_failed": len(sectors) - len(sectors_available),
             "watchlist_fetched": len(valid_stocks),
             "watchlist_failed": len(stock_results) - len(valid_stocks),
+            "currency_pairs_fetched": len(currency_available),
+            "currency_pairs_failed": len(currency_pairs) - len(currency_available),
             "all_markets_closed": all_holiday,
         },
     }

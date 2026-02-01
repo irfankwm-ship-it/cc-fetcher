@@ -20,6 +20,10 @@ yahoo_finance:
     - {ticker: "399001.SZ", name: "Shenzhen Component"}
     - {ticker: "^HSI", name: "Hang Seng"}
     - {ticker: "000300.SS", name: "CSI 300"}
+  currency_pairs:
+    - {ticker: "USDCNY=X", name: "USD/CNY"}
+    - {ticker: "CADCNY=X", name: "CAD/CNY"}
+    - {ticker: "USDCAD=X", name: "USD/CAD"}
   timeout: 60
   retry:
     max_retries: 3
@@ -27,11 +31,62 @@ yahoo_finance:
 
 news:
   feeds:
+    # ── Canadian media ──
     - {url: "https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/world/", name: "Globe and Mail"}
     - {url: "https://www.cbc.ca/webfeed/rss/rss-world", name: "CBC"}
+    - {url: "https://www.cbc.ca/webfeed/rss/rss-politics", name: "CBC Politics"}
+    # ── SCMP (7 section feeds) ──
     - {url: "https://www.scmp.com/rss/4/feed", name: "SCMP"}
-  keywords: ["China", "Beijing", "Canada-China", "PRC", "Huawei", "Xi Jinping", "CSIS", "Chinese"]
+    - {url: "https://www.scmp.com/rss/318198/feed", name: "SCMP Politics"}
+    - {url: "https://www.scmp.com/rss/318199/feed", name: "SCMP Diplomacy"}
+    - {url: "https://www.scmp.com/rss/318421/feed", name: "SCMP Economy"}
+    - {url: "https://www.scmp.com/rss/92/feed", name: "SCMP Business"}
+    - {url: "https://www.scmp.com/rss/320663/feed", name: "SCMP Tech"}
+    # ── International media ──
+    - {url: "https://feeds.bbci.co.uk/news/world/asia/china/rss.xml", name: "BBC China"}
+    - {url: "https://asia.nikkei.com/rss/feed/nar", name: "Nikkei Asia"}
+    - {url: "https://www.aljazeera.com/xml/rss/all.xml", name: "Al Jazeera"}
+    # ── Asia-focused outlets ──
+    - {url: "https://thediplomat.com/feed/", name: "The Diplomat"}
+    - {url: "https://asiatimes.com/feed/", name: "Asia Times"}
+    - {url: "https://hongkongfp.com/feed/", name: "Hong Kong Free Press"}
+    # ── Chinese state media (English) ──
+    - {url: "https://www.globaltimes.cn/rss/outbrain.xml", name: "Global Times"}
+    # ── Think tanks & policy ──
+    - {url: "https://www.atlanticcouncil.org/feed/", name: "Atlantic Council"}
+    - {url: "https://www.lowyinstitute.org/the-interpreter/rss.xml", name: "Lowy Institute"}
+    - {url: "https://macdonaldlaurier.ca/feed/", name: "Macdonald-Laurier Institute"}
+    - {url: "https://warontherocks.com/feed/", name: "War on the Rocks"}
+  keywords:
+    - "China"
+    - "Chinese"
+    - "Beijing"
+    - "PRC"
+    - "Xi Jinping"
+    - "Canada-China"
+    - "Huawei"
+    - "Taiwan"
+    - "Hong Kong"
+    - "South China Sea"
+    - "Xinjiang"
+    - "Tibet"
+    - "Belt and Road"
+    - "ASEAN"
+    - "Indo-Pacific"
+    - "semiconductor"
+    - "rare earth"
+    - "TikTok"
+    - "Temu"
+    - "BYD"
+    - "yuan"
+    - "renminbi"
+    - "BRICS"
+    - "Shanghai"
+    - "Shenzhen"
   timeout: 60
+  retry:
+    max_retries: 3
+    backoff_factor: 1.0
 
 xinhua:
   url: "http://www.xinhuanet.com/english/"
