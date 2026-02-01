@@ -22,18 +22,35 @@ from fetcher.http import request_with_retry
 logger = logging.getLogger(__name__)
 
 NEWS_API_BASE = "https://api.io.canada.ca/io-server/gc/news"
-GAC_DEPT = "departmentofforeignaffairstradeanddevelopment"
+GAC_DEPTS = [
+    "departmentofforeignaffairstradeanddevelopment",
+    "publicsafetycanada",
+    "innovationscienceandeconomicdevelopmentcanada",
+]
+GAC_CONTENT_TYPES = ["newsreleases", "statements"]
 
 CHINA_KEYWORDS = [
-    # English
+    # English — direct
     "China", "Chinese", "Beijing", "PRC", "People's Republic",
     "Hong Kong", "Taiwan", "Taipei", "Xinjiang", "Tibet",
-    "Indo-Pacific", "Asia-Pacific",
-    "Huawei", "canola", "Uyghur",
-    "Xi Jinping",
+    "Huawei", "canola", "Uyghur", "Xi Jinping",
+    # English — broader regional/thematic
+    "Indo-Pacific", "Asia-Pacific", "Asia Pacific",
+    "foreign interference", "foreign influence",
+    "sanctions", "Magnitsky",
+    "trade restrictions", "trade dispute", "tariff",
+    "rare earth", "critical minerals",
+    "South China Sea", "ASEAN",
+    "semiconductor", "chip",
+    "5G", "TikTok",
+    "human rights", "forced labour", "forced labor",
+    "consular", "detention",
     # French
     "Chine", "chinois", "Pékin", "RPC", "République populaire",
     "Indo-Pacifique", "Asie-Pacifique",
+    "ingérence étrangère", "influence étrangère",
+    "sanctions", "droits de la personne",
+    "semi-conducteur", "minéraux critiques",
 ]
 
 
@@ -98,42 +115,54 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
         Dictionary with filtered articles and metadata.
     """
     api_base = config.get("api_base", NEWS_API_BASE)
-    dept = config.get("dept", GAC_DEPT)
-    limit = config.get("limit", 50)
+    depts = config.get("depts", GAC_DEPTS)
+    content_types = config.get("content_types", GAC_CONTENT_TYPES)
+    limit = config.get("limit", 100)
     timeout = config.timeout
 
-    # Fetch English and French news
+    # Fetch English and French news across departments and content types
     all_articles: list[dict[str, Any]] = []
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
-        for lang in ("en", "fr"):
-            url = f"{api_base}/{lang}/v2"
-            params = {
-                "dept": dept,
-                "type": "newsreleases",
-                "limit": limit,
-                "sort": "publishedDate",
-                "orderBy": "desc",
-            }
+        for dept in depts:
+            for content_type in content_types:
+                for lang in ("en", "fr"):
+                    url = f"{api_base}/{lang}/v2"
+                    params = {
+                        "dept": dept,
+                        "type": content_type,
+                        "limit": limit,
+                        "sort": "publishedDate",
+                        "orderBy": "desc",
+                    }
 
-            try:
-                resp = await request_with_retry(
-                    client, "GET", url,
-                    retry=config.retry,
-                    params=params, timeout=timeout,
-                )
-                data = resp.json()
-                entries = data.get("feed", {}).get("entry", [])
-                articles = _extract_articles_from_api(entries)
-                all_articles.extend(articles)
-                logger.info("GAC %s: %d entries fetched", lang.upper(), len(articles))
-            except httpx.HTTPStatusError as exc:
-                logger.warning("GAC %s HTTP error: %s", lang, exc.response.status_code)
-            except httpx.RequestError as exc:
-                logger.warning("GAC %s request error: %s", lang, exc)
+                    try:
+                        resp = await request_with_retry(
+                            client, "GET", url,
+                            retry=config.retry,
+                            params=params, timeout=timeout,
+                        )
+                        data = resp.json()
+                        entries = data.get("feed", {}).get("entry", [])
+                        articles = _extract_articles_from_api(entries)
+                        all_articles.extend(articles)
+                        logger.info(
+                            "GAC %s/%s/%s: %d entries",
+                            dept[:20], content_type, lang.upper(), len(articles),
+                        )
+                    except httpx.HTTPStatusError as exc:
+                        logger.warning(
+                            "GAC %s/%s/%s HTTP error: %s",
+                            dept[:20], content_type, lang, exc.response.status_code,
+                        )
+                    except httpx.RequestError as exc:
+                        logger.warning(
+                            "GAC %s/%s/%s request error: %s",
+                            dept[:20], content_type, lang, exc,
+                        )
 
-    # Filter by recency — only keep articles from the last 48 hours
-    cutoff = datetime.strptime(date, "%Y-%m-%d") - timedelta(hours=48)
+    # Filter by recency — keep articles from the last 7 days
+    cutoff = datetime.strptime(date, "%Y-%m-%d") - timedelta(days=7)
     recent_articles: list[dict[str, Any]] = []
     for article in all_articles:
         article_date = article.get("date", "")

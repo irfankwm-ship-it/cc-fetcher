@@ -1,8 +1,8 @@
 parliament:
   base_url: "https://api.openparliament.ca"
-  session: "44-1"
+  session: "45-1"
   timeout: 30
-  keywords: ["China", "Beijing", "PRC", "Huawei", "canola"]
+  keywords: ["China", "Chinese", "Beijing", "PRC", "Huawei", "canola", "Taiwan", "Hong Kong", "Indo-Pacific", "Uyghur", "Xinjiang", "foreign interference", "TikTok"]
 
 statcan:
   base_url: "https://www150.statcan.gc.ca/t1/wds/rest"
@@ -30,6 +30,4 @@ xinhua:
 
 global_affairs:
   api_base: "https://api.io.canada.ca/io-server/gc/news"
-  dept: "departmentofforeignaffairstradeanddevelopment"
-  limit: 50
   timeout: 30

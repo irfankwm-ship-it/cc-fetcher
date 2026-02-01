@@ -20,9 +20,14 @@ from fetcher.config import SourceConfig
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_KEYWORDS = ["China", "Beijing", "PRC", "Huawei", "canola"]
-TRACKED_BILLS = ["C-27", "S-7", "C-34", "C-70", "M-62"]
-PARLIAMENT_SESSION = "44-1"
+DEFAULT_KEYWORDS = [
+    "China", "Chinese", "Beijing", "PRC",
+    "Huawei", "canola", "Taiwan", "Hong Kong",
+    "Indo-Pacific", "Uyghur", "Xinjiang", "Tibet",
+    "foreign interference", "TikTok",
+]
+TRACKED_BILLS = ["C-27", "C-34", "C-70", "C-16", "S-7"]
+PARLIAMENT_SESSION = "45-1"
 
 OPEN_PARLIAMENT_BASE = "https://api.openparliament.ca"
 
@@ -35,36 +40,43 @@ async def _fetch_bills(
 ) -> list[dict[str, Any]]:
     """Fetch bill status from Open Parliament API.
 
+    Tries the current session first, then falls back to 44-1 for older bills.
     Returns a list of bill records with id, title, status.
     """
     bills: list[dict[str, Any]] = []
+    sessions_to_try = [session, "44-1"] if session != "44-1" else [session]
 
     for bill_id in TRACKED_BILLS:
-        try:
-            url = f"{base_url}/bills/{session}/{bill_id}/?format=json"
-            resp = await client.get(url, timeout=timeout)
+        found = False
+        for try_session in sessions_to_try:
+            if found:
+                break
+            try:
+                url = f"{base_url}/bills/{try_session}/{bill_id}/?format=json"
+                resp = await client.get(url, timeout=timeout)
 
-            if resp.status_code == 404:
-                logger.info("Bill %s not found in session %s", bill_id, session)
-                continue
+                if resp.status_code == 404:
+                    logger.info("Bill %s not found in session %s", bill_id, try_session)
+                    continue
 
-            resp.raise_for_status()
-            data = resp.json()
+                resp.raise_for_status()
+                data = resp.json()
 
-            name = data.get("name", {})
-            bills.append({
-                "id": bill_id,
-                "title": name.get("en", "") if isinstance(name, dict) else str(name),
-                "title_fr": name.get("fr", "") if isinstance(name, dict) else "",
-                "status": data.get("status_code", ""),
-                "introduced": data.get("introduced", ""),
-                "session": session,
-                "sponsor": data.get("sponsor_politician_url", ""),
-            })
-        except httpx.HTTPStatusError as exc:
-            logger.warning("Failed to fetch bill %s: HTTP %s", bill_id, exc.response.status_code)
-        except httpx.RequestError as exc:
-            logger.warning("Request error fetching bill %s: %s", bill_id, exc)
+                name = data.get("name", {})
+                bills.append({
+                    "id": bill_id,
+                    "title": name.get("en", "") if isinstance(name, dict) else str(name),
+                    "title_fr": name.get("fr", "") if isinstance(name, dict) else "",
+                    "status": data.get("status_code", ""),
+                    "introduced": data.get("introduced", ""),
+                    "session": try_session,
+                    "sponsor": data.get("sponsor_politician_url", ""),
+                })
+                found = True
+            except httpx.HTTPStatusError as exc:
+                logger.warning("Failed to fetch bill %s: HTTP %s", bill_id, exc.response.status_code)
+            except httpx.RequestError as exc:
+                logger.warning("Request error fetching bill %s: %s", bill_id, exc)
 
     return bills
 
@@ -99,22 +111,68 @@ async def _search_debate_content(
 ) -> dict[str, int]:
     """Search a single debate session for keyword mentions.
 
-    Fetches the debate page and counts keyword occurrences in the text.
+    Fetches speeches from the debate via the speeches endpoint and counts
+    keyword occurrences in the actual speech content.
     """
-    counts: dict[str, int] = {}
+    counts: dict[str, int] = {kw: 0 for kw in keywords}
     try:
+        # First get the debate detail to find the speeches URL
         resp = await client.get(
             f"{base_url}{debate_url}?format=json",
             timeout=timeout,
         )
         resp.raise_for_status()
-        text = resp.text.lower()
+        data = resp.json()
+
+        speeches_url = data.get("related", {}).get("speeches_url", "")
+        if not speeches_url:
+            logger.warning("No speeches_url for debate %s", debate_url)
+            return counts
+
+        # Fetch speeches (paginated, get up to 500 per debate)
+        all_text_parts: list[str] = []
+        sep = "&" if "?" in speeches_url else "?"
+        next_url = f"{base_url}{speeches_url}{sep}format=json&limit=200"
+
+        pages_fetched = 0
+        while next_url and pages_fetched < 3:
+            pages_fetched += 1
+            try:
+                speeches_resp = await client.get(next_url, timeout=timeout)
+                speeches_resp.raise_for_status()
+                speeches_data = speeches_resp.json()
+            except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+                logger.warning("Failed to fetch speeches page: %s", exc)
+                break
+
+            for speech in speeches_data.get("objects", []):
+                # Speech content is in content.en / content.fr (HTML)
+                content = speech.get("content", {})
+                if isinstance(content, dict):
+                    all_text_parts.append(content.get("en", ""))
+                    all_text_parts.append(content.get("fr", ""))
+                elif isinstance(content, str):
+                    all_text_parts.append(content)
+
+            # Follow pagination
+            pagination = speeches_data.get("pagination", {})
+            next_page = pagination.get("next_url", "")
+            if next_page:
+                next_url = f"{base_url}{next_page}"
+            else:
+                break
+
+        combined_text = " ".join(all_text_parts).lower()
         for kw in keywords:
-            counts[kw] = text.count(kw.lower())
+            counts[kw] = combined_text.count(kw.lower())
+
+        logger.info(
+            "Debate %s: %d speech segments, %d keyword matches",
+            debate_url, len(all_text_parts) // 2, sum(counts.values()),
+        )
+
     except (httpx.HTTPStatusError, httpx.RequestError) as exc:
         logger.warning("Failed to fetch debate %s: %s", debate_url, exc)
-        for kw in keywords:
-            counts[kw] = 0
     return counts
 
 
