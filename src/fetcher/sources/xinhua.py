@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -158,9 +159,9 @@ def _extract_articles_from_html(html: str, base_url: str) -> list[dict[str, Any]
         if not title:
             continue
 
-        # Resolve relative URLs
+        # Resolve relative URLs using proper URL joining (handles ../ paths)
         if url and not url.startswith("http"):
-            url = base_url.rstrip("/") + "/" + url.lstrip("/")
+            url = urljoin(base_url, url)
 
         # Try to extract date from URL pattern like /2026-01/29/c_xxxxx.htm
         if not date and url:
