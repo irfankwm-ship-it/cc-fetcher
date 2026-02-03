@@ -50,13 +50,34 @@ news:
     - {url: "https://thediplomat.com/feed/", name: "The Diplomat"}
     - {url: "https://asiatimes.com/feed/", name: "Asia Times"}
     - {url: "https://hongkongfp.com/feed/", name: "Hong Kong Free Press"}
+    # ── Taiwan ──
+    - {url: "https://feeds.feedburner.com/rsscna/engnews/", name: "Focus Taiwan"}
+    - {url: "https://www.taipeitimes.com/xml/index.rss", name: "Taipei Times"}
+    # ── Independent / critical voices ──
+    - {url: "https://chinadigitaltimes.net/feed/", name: "China Digital Times"}
+    - {url: "https://chinadigitaltimes.net/chinese/feed", name: "China Digital Times ZH"}
+    - {url: "https://feeds.feedburner.com/chinafile/All", name: "ChinaFile"}
     # ── Chinese state media (English) ──
     - {url: "https://www.globaltimes.cn/rss/outbrain.xml", name: "Global Times"}
+    - {url: "https://www.cgtn.com/subscribe/rss/section/china.xml", name: "CGTN"}
+    - {url: "http://www.chinadaily.com.cn/rss/china_rss.xml", name: "China Daily"}
+    - {url: "http://en.people.cn/rss/Politics.xml", name: "People's Daily EN"}
+    - {url: "http://www.ecns.cn/rss/rss.xml", name: "ECNS"}
+    - {url: "http://www.china.org.cn/rss/1201719.xml", name: "China.org.cn"}
+    # ── Hong Kong ──
+    - {url: "https://news.rthk.hk/rthk/en/rss/rss.xml", name: "RTHK"}
+    # ── Social / cultural ──
+    - {url: "https://www.sixthtone.com/rss/index.xml", name: "Sixth Tone"}
     # ── Think tanks & policy ──
     - {url: "https://www.atlanticcouncil.org/feed/", name: "Atlantic Council"}
     - {url: "https://www.lowyinstitute.org/the-interpreter/rss.xml", name: "Lowy Institute"}
     - {url: "https://macdonaldlaurier.ca/feed/", name: "Macdonald-Laurier Institute"}
     - {url: "https://warontherocks.com/feed/", name: "War on the Rocks"}
+    - {url: "https://www.brookings.edu/feed/", name: "Brookings"}
+    - {url: "https://www.csis.org/analysis/feed", name: "CSIS"}
+    - {url: "https://www.rand.org/topics/china.xml", name: "RAND"}
+    - {url: "https://carnegieendowment.org/rss/", name: "Carnegie Endowment"}
+    - {url: "https://www.aspistrategist.org.au/feed/", name: "ASPI Strategist"}
   keywords:
     - "China"
     - "Chinese"
@@ -101,3 +122,51 @@ global_affairs:
   retry:
     max_retries: 5
     backoff_factor: 2.0
+
+mfa:
+  url: "https://www.fmprc.gov.cn/eng/xw/fyrbt/lxjzh/"
+  timeout: 60
+  retry:
+    max_retries: 5
+    backoff_factor: 2.0
+
+mofcom:
+  url: "http://english.mofcom.gov.cn/"
+  timeout: 60
+  retry:
+    max_retries: 5
+    backoff_factor: 2.0
+
+chinese_news:
+  feeds:
+    - {url: "http://www.xinhuanet.com/politics/xhll.xml", name: "新华社"}
+    - {url: "http://www.people.com.cn/rss/politics.xml", name: "人民日报"}
+    - {url: "https://www.huanqiu.com/rss.xml", name: "环球时报"}
+    - {url: "https://chinadigitaltimes.net/chinese/feed", name: "中国数字时代"}
+  keywords:
+    - "加拿大"
+    - "渥太华"
+    - "特鲁多"
+    - "油菜籽"
+    - "关税"
+    - "制裁"
+    - "贸易战"
+    - "台湾"
+    - "香港"
+    - "新疆"
+    - "维吾尔"
+    - "西藏"
+    - "南海"
+    - "一带一路"
+    - "半导体"
+    - "稀土"
+    - "华为"
+    - "印太"
+    - "金砖"
+    - "外交"
+    - "国防"
+    - "军事"
+  timeout: 60
+  retry:
+    max_retries: 3
+    backoff_factor: 1.0

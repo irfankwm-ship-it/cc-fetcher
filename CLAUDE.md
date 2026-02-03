@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**cc-fetcher** is the raw data ingestion layer for the China Compass pipeline. It collects data from 6 external sources and persists them as structured JSON in `cc-data/raw/{date}/{source}.json`. This is the first stage of the pipeline — only raw data collection and light parsing, no analysis.
+**cc-fetcher** is the raw data ingestion layer for the China Compass pipeline. It collects data from 9 external sources (including 3 Chinese-language sources) and persists them as structured JSON in `cc-data/raw/{date}/{source}.json`. This is the first stage of the pipeline — only raw data collection and light parsing, no analysis.
 
 ## Architecture
 
@@ -27,6 +27,9 @@ Each source module exposes a single async `fetch(config, date) -> dict` entry po
 | news | `sources/news_scraper.py` | Low | RSS feeds with keyword filtering, 0.75 dedup similarity threshold, semaphore of 10 concurrent |
 | xinhua | `sources/xinhua.py` | Low | HTML scraper — fragile to layout changes |
 | global_affairs | `sources/global_affairs.py` | Low | canada.ca API, bilingual (EN+FR), 7-day recency window |
+| mfa | `sources/mfa.py` | Medium | MFA press conference scraper (fmprc.gov.cn), bilingual keyword filtering |
+| mofcom | `sources/mofcom.py` | Medium | MOFCOM trade policy scraper (mofcom.gov.cn), trade/tariff focused |
+| chinese_news | `sources/chinese_news.py` | Medium | Chinese-language RSS feeds (People's Daily, Xinhua ZH), tags articles with `"language": "zh"` |
 
 ### Output Format
 
@@ -83,3 +86,5 @@ Environment differences: dev uses shorter timeouts (30s) and fewer retries (3); 
 - HTTP retry logic in `fetcher/http.py`: retries on 429/500/502/503/504 with exponential backoff
 - Ruff config: line-length 100, target Python 3.12, rules E/F/I/N/W/UP
 - Non-serializable values converted via `default=str` in JSON output
+- Chinese-language sources tag articles with `"language": "zh"` for downstream LLM translation
+- Chinese keyword filtering uses exact substring match (no word boundaries)
