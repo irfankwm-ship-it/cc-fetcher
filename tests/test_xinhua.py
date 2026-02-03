@@ -101,8 +101,19 @@ async def test_fetch_success(
     xinhua_html: str,
 ) -> None:
     """Test successful Xinhua fetch."""
-    respx.get("http://www.xinhuanet.com/english/").mock(
+    # Mock all section URLs
+    respx.get("http://english.news.cn/china/index.htm").mock(
         return_value=httpx.Response(200, text=xinhua_html)
+    )
+    respx.get("http://english.news.cn/world/index.htm").mock(
+        return_value=httpx.Response(200, text="<html></html>")
+    )
+    respx.get("http://english.news.cn/").mock(
+        return_value=httpx.Response(200, text="<html></html>")
+    )
+    # Mock article body fetches with a catch-all pattern
+    respx.get(url__regex=r".*\.html?$").mock(
+        return_value=httpx.Response(200, text="<html><div class='detail_con'><p>Article body text here.</p></div></html>")
     )
 
     result = await fetch(xinhua_config, "2025-01-17")
@@ -118,7 +129,14 @@ async def test_fetch_success(
 @pytest.mark.asyncio
 async def test_fetch_http_error(xinhua_config: SourceConfig) -> None:
     """Test graceful handling of HTTP errors."""
-    respx.get("http://www.xinhuanet.com/english/").mock(
+    # All section URLs return 403
+    respx.get("http://english.news.cn/china/index.htm").mock(
+        return_value=httpx.Response(403)
+    )
+    respx.get("http://english.news.cn/world/index.htm").mock(
+        return_value=httpx.Response(403)
+    )
+    respx.get("http://english.news.cn/").mock(
         return_value=httpx.Response(403)
     )
 
@@ -132,7 +150,14 @@ async def test_fetch_http_error(xinhua_config: SourceConfig) -> None:
 @pytest.mark.asyncio
 async def test_fetch_timeout(xinhua_config: SourceConfig) -> None:
     """Test graceful handling of connection timeouts."""
-    respx.get("http://www.xinhuanet.com/english/").mock(
+    # All section URLs timeout
+    respx.get("http://english.news.cn/china/index.htm").mock(
+        side_effect=httpx.ConnectTimeout("Timed out")
+    )
+    respx.get("http://english.news.cn/world/index.htm").mock(
+        side_effect=httpx.ConnectTimeout("Timed out")
+    )
+    respx.get("http://english.news.cn/").mock(
         side_effect=httpx.ConnectTimeout("Timed out")
     )
 
@@ -146,8 +171,15 @@ async def test_fetch_timeout(xinhua_config: SourceConfig) -> None:
 @pytest.mark.asyncio
 async def test_fetch_empty_page(xinhua_config: SourceConfig) -> None:
     """Test handling of a page with no articles."""
-    respx.get("http://www.xinhuanet.com/english/").mock(
-        return_value=httpx.Response(200, text="<html><body><p>Maintenance</p></body></html>")
+    empty_html = "<html><body><p>Maintenance</p></body></html>"
+    respx.get("http://english.news.cn/china/index.htm").mock(
+        return_value=httpx.Response(200, text=empty_html)
+    )
+    respx.get("http://english.news.cn/world/index.htm").mock(
+        return_value=httpx.Response(200, text=empty_html)
+    )
+    respx.get("http://english.news.cn/").mock(
+        return_value=httpx.Response(200, text=empty_html)
     )
 
     result = await fetch(xinhua_config, "2025-01-17")

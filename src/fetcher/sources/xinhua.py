@@ -54,6 +54,46 @@ CHINA_INDICATORS = [
 ]
 
 
+def _extract_article_body(html: str) -> str:
+    """Extract article body text from a Xinhua article page.
+
+    Args:
+        html: Raw HTML content of article page.
+
+    Returns:
+        Extracted body text, or empty string if not found.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Xinhua article body selectors (in order of preference)
+    body_selectors = [
+        "div.detail_con",  # Main article container
+        "div#detail",
+        "div.article-body",
+        "div.content",
+        "article p",
+        "div.story p",
+    ]
+
+    for selector in body_selectors:
+        container = soup.select_one(selector)
+        if container:
+            # Get all paragraph text
+            paragraphs = container.find_all("p")
+            if paragraphs:
+                text = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+                if len(text) > 50:  # Meaningful content
+                    return text[:2000]  # Cap at 2000 chars
+
+    # Fallback: find any substantial paragraph content
+    all_paragraphs = soup.find_all("p")
+    texts = [p.get_text(strip=True) for p in all_paragraphs if len(p.get_text(strip=True)) > 50]
+    if texts:
+        return " ".join(texts[:5])[:2000]
+
+    return ""
+
+
 def _extract_articles_from_html(html: str, base_url: str) -> list[dict[str, Any]]:
     """Parse Xinhua HTML page and extract article data.
 
@@ -139,6 +179,37 @@ def _extract_articles_from_html(html: str, base_url: str) -> list[dict[str, Any]
     return articles
 
 
+async def _fetch_article_body(
+    client: httpx.AsyncClient,
+    article: dict[str, Any],
+    timeout: float,
+) -> None:
+    """Fetch full article body if not already present.
+
+    Modifies article dict in place, adding body_text field.
+    """
+    if article.get("body") and len(article["body"]) > 100:
+        # Already have substantial body from index page
+        article["body_text"] = article["body"]
+        return
+
+    url = article.get("source_url", "")
+    if not url:
+        return
+
+    try:
+        resp = await client.get(url, timeout=timeout)
+        resp.raise_for_status()
+        body_text = _extract_article_body(resp.text)
+        if body_text:
+            article["body_text"] = body_text
+            # Also update body snippet for filtering
+            if not article.get("body"):
+                article["body"] = body_text[:500]
+    except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+        logger.debug("Failed to fetch article body from %s: %s", url, exc)
+
+
 def _kw_match(keyword: str, text: str) -> bool:
     """Match a keyword against text using word boundaries."""
     return bool(re.search(r'\b' + re.escape(keyword) + r'\b', text, re.IGNORECASE))
@@ -201,6 +272,8 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     Returns:
         Dictionary with filtered articles and metadata.
     """
+    import asyncio
+
     urls = config.get("section_urls", SECTION_URLS)
     timeout = config.timeout
 
@@ -231,14 +304,25 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
                 logger.warning("Xinhua %s request failed: %s", url, exc)
                 errors.append(f"{url}: {exc}")
 
-    if not all_articles and errors:
-        return {
-            "date": date,
-            "error": "; ".join(errors),
-            "articles": [],
-        }
+        if not all_articles and errors:
+            return {
+                "date": date,
+                "error": "; ".join(errors),
+                "articles": [],
+            }
 
-    relevant = _filter_relevant(all_articles, CANADA_KEYWORDS, POLICY_KEYWORDS)
+        # Filter for relevance first (before fetching bodies to minimize requests)
+        relevant = _filter_relevant(all_articles, CANADA_KEYWORDS, POLICY_KEYWORDS)
+
+        # Fetch full article bodies for relevant articles (concurrently, max 5 at a time)
+        semaphore = asyncio.Semaphore(5)
+
+        async def fetch_with_semaphore(article: dict[str, Any]) -> None:
+            async with semaphore:
+                await _fetch_article_body(client, article, timeout)
+
+        await asyncio.gather(*[fetch_with_semaphore(a) for a in relevant])
+        logger.info("Xinhua: fetched bodies for %d relevant articles", len(relevant))
 
     return {
         "date": date,
