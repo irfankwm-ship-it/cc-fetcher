@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**cc-fetcher** is the raw data ingestion layer for the China Compass pipeline. It collects data from 9 external sources (including 3 Chinese-language sources) and persists them as structured JSON in `cc-data/raw/{date}/{source}.json`. This is the first stage of the pipeline — only raw data collection and light parsing, no analysis.
+**cc-fetcher** is the raw data ingestion layer for the China Compass pipeline. It collects data from 9 external sources (including Chinese-language sources from mainland China, Taiwan, and Hong Kong) and persists them as structured JSON in `cc-data/raw/{date}/{source}.json`. This is the first stage of the pipeline — only raw data collection and light parsing, no analysis.
+
+The fetcher runs in a **secure Docker container** with data validation and CDR (Content Disarm & Reconstruction) cleaning before output reaches storage.
 
 ## Architecture
 
@@ -27,9 +29,9 @@ Each source module exposes a single async `fetch(config, date) -> dict` entry po
 | news | `sources/news_scraper.py` | Low | RSS feeds with keyword filtering, 0.75 dedup similarity threshold, semaphore of 10 concurrent |
 | xinhua | `sources/xinhua.py` | Low | HTML scraper — fragile to layout changes |
 | global_affairs | `sources/global_affairs.py` | Low | canada.ca API, bilingual (EN+FR), 7-day recency window |
-| mfa | `sources/mfa.py` | Medium | MFA press conference scraper (fmprc.gov.cn), bilingual keyword filtering |
-| mofcom | `sources/mofcom.py` | Medium | MOFCOM trade policy scraper (mofcom.gov.cn), trade/tariff focused |
-| chinese_news | `sources/chinese_news.py` | Medium | Chinese-language RSS feeds (People's Daily, Xinhua ZH), tags articles with `"language": "zh"` |
+| mfa | `sources/mfa.py` | Medium | MFA press conference scraper (fmprc.gov.cn), fetches ALL articles from last 24h |
+| mofcom | `sources/mofcom.py` | Medium | MOFCOM trade policy scraper (mofcom.gov.cn), fetches ALL articles from last 24h |
+| chinese_news | `sources/chinese_news.py` | Medium | Chinese-language RSS feeds from mainland (新华社, 人民日报), Taiwan (自由時報), Hong Kong (香港電台). Tags with `"language": "zh"` and `"region": "mainland/taiwan/hongkong"` |
 
 ### Output Format
 
@@ -41,6 +43,49 @@ All sources write a JSON envelope:
 }
 ```
 Files go to `{output_dir}/{date}/{source}.json` with UTF-8, `ensure_ascii=False`, 2-space indent.
+
+## Security Architecture
+
+The fetcher uses a multi-stage security pipeline to prevent malicious content from reaching storage:
+
+### Docker Containers
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│    FETCHER      │    │    CLEANER      │    │     MOVER       │
+│  (has internet) │───►│  (air-gapped)   │───►│  (no network)   │
+│                 │    │                 │    │                 │
+│ - fetch data    │    │ - validate      │    │ - copy to       │
+│ - parse         │    │ - CDR clean     │    │   final storage │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+- **Fetcher**: Read-only container, non-root user, drops all capabilities
+- **Cleaner**: Air-gapped (no internet), runs CDR reconstruction
+- **Mover**: No network at all, just copies validated files
+
+### Content Disarm & Reconstruction (CDR)
+
+The cleaner (`scripts/cdr_cleaner.py`) doesn't filter data — it **rebuilds** it:
+1. Parse JSON and extract only expected fields
+2. Sanitize all strings (strip HTML, control chars)
+3. Validate URLs (only http/https, no javascript:)
+4. Reconstruct a brand-new clean JSON file
+
+### Validation
+
+`scripts/validate_output.py` checks for malicious patterns:
+- Script injection (`<script>`, event handlers)
+- Dangerous URL protocols
+- Excessive nesting or file sizes
+
+### Local Development
+
+```bash
+docker compose up --build          # full pipeline
+docker compose run fetcher         # fetch only
+docker compose run cleaner         # clean only
+```
 
 ## Build & Development Commands
 
@@ -86,5 +131,7 @@ Environment differences: dev uses shorter timeouts (30s) and fewer retries (3); 
 - HTTP retry logic in `fetcher/http.py`: retries on 429/500/502/503/504 with exponential backoff
 - Ruff config: line-length 100, target Python 3.12, rules E/F/I/N/W/UP
 - Non-serializable values converted via `default=str` in JSON output
-- Chinese-language sources tag articles with `"language": "zh"` for downstream LLM translation
-- Chinese keyword filtering uses exact substring match (no word boundaries)
+- Chinese-language sources tag articles with `"language": "zh"` and `"region"` for downstream processing
+- Chinese keyword filtering uses exact substring match (no word boundaries) with both Simplified and Traditional variants
+- MFA/MOFCOM fetch ALL articles from last 24h (date-based filtering, no keyword filtering)
+- Government sources (MFA, MOFCOM) use URL date patterns or JavaScript timestamps for 24h filtering
