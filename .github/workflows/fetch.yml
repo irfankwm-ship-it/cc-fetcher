@@ -1,13 +1,27 @@
-name: Fetch Raw Data
+name: Fetch Raw Data (Secure)
 
 on:
   schedule:
     - cron: "0 10 * * *"
   workflow_dispatch:
+    inputs:
+      date:
+        description: 'Date to fetch (YYYY-MM-DD)'
+        required: false
+        type: string
+
+# Limit permissions
+permissions:
+  contents: read
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Security: Run in a fresh environment each time
+    env:
+      CC_ENV: prod
 
     steps:
       - name: Checkout cc-fetcher
@@ -20,24 +34,76 @@ jobs:
           path: cc-data
           token: ${{ secrets.CC_PAT }}
 
+      - name: Determine date
+        id: date
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            echo "date=${{ inputs.date }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create staging directory
+        run: |
+          mkdir -p staging/${{ steps.date.outputs.date }}
+          chmod 700 staging
+
+      # =======================================================================
+      # OPTION A: Docker-based fetch (more isolated, slower)
+      # =======================================================================
+      - name: Build fetcher image
+        run: docker build -t cc-fetcher:local .
+
+      - name: Run fetcher in Docker
+        run: |
+          docker run --rm \
+            --user 1000:1000 \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --memory=2g \
+            --cpus=2 \
+            --network=host \
+            -v "${{ github.workspace }}/staging:/data/raw:rw" \
+            -v "${{ github.workspace }}/config:/app/config:ro" \
+            -e CC_ENV=prod \
+            cc-fetcher:local \
+            run --date ${{ steps.date.outputs.date }} --output-dir /data/raw
+
+      # =======================================================================
+      # Validate & Clean (runs on host - GHA is already isolated)
+      # =======================================================================
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: pip install -e .
+      - name: Install validation dependencies
+        run: pip install bleach pydantic
 
-      - name: Determine date
-        id: date
-        run: echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-
-      - name: Run fetcher
+      - name: Validate fetched data
+        id: validate
         run: |
-          python -m fetcher.cli run \
-            --env prod \
-            --date ${{ steps.date.outputs.date }} \
-            --output-dir ./cc-data/raw
+          python scripts/validate_output.py staging/${{ steps.date.outputs.date }}
+
+      - name: Clean data with CDR
+        run: |
+          mkdir -p clean/${{ steps.date.outputs.date }}
+          python scripts/cdr_cleaner.py \
+            staging/${{ steps.date.outputs.date }} \
+            clean/${{ steps.date.outputs.date }}
+
+      - name: Final validation of cleaned data
+        run: |
+          python scripts/validate_output.py clean/${{ steps.date.outputs.date }}
+
+      # =======================================================================
+      # Move clean data to cc-data
+      # =======================================================================
+      - name: Copy clean data to cc-data
+        run: |
+          mkdir -p cc-data/raw/${{ steps.date.outputs.date }}
+          cp -r clean/${{ steps.date.outputs.date }}/* cc-data/raw/${{ steps.date.outputs.date }}/
 
       - name: Commit and push raw data to cc-data
         working-directory: cc-data
@@ -56,3 +122,90 @@ jobs:
           repository: ${{ github.repository_owner }}/cc-analysis
           event-type: new-raw-data
           client-payload: '{"date": "${{ steps.date.outputs.date }}"}'
+
+      # =======================================================================
+      # Cleanup (security: don't leave data around)
+      # =======================================================================
+      - name: Cleanup staging data
+        if: always()
+        run: |
+          rm -rf staging clean
+          echo "Staging data cleaned up"
+
+  # ===========================================================================
+  # Alternative: Faster non-Docker job (less isolated but quicker)
+  # ===========================================================================
+  fetch-fast:
+    if: false  # Disabled by default - enable if Docker is too slow
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout cc-fetcher
+        uses: actions/checkout@v4
+
+      - name: Checkout cc-data
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/cc-data
+          path: cc-data
+          token: ${{ secrets.CC_PAT }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install bleach pydantic
+          playwright install chromium
+
+      - name: Determine date
+        id: date
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Create staging directory
+        run: mkdir -p staging/${{ steps.date.outputs.date }}
+
+      - name: Run fetcher
+        run: |
+          python -m fetcher.cli run \
+            --env prod \
+            --date ${{ steps.date.outputs.date }} \
+            --output-dir ./staging
+
+      - name: Validate and clean data
+        run: |
+          mkdir -p clean/${{ steps.date.outputs.date }}
+          python scripts/validate_output.py staging/${{ steps.date.outputs.date }}
+          python scripts/cdr_cleaner.py staging/${{ steps.date.outputs.date }} clean/${{ steps.date.outputs.date }}
+          python scripts/validate_output.py clean/${{ steps.date.outputs.date }}
+
+      - name: Copy clean data to cc-data
+        run: |
+          mkdir -p cc-data/raw/${{ steps.date.outputs.date }}
+          cp -r clean/${{ steps.date.outputs.date }}/* cc-data/raw/${{ steps.date.outputs.date }}/
+
+      - name: Commit and push raw data to cc-data
+        working-directory: cc-data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add raw/
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Add raw data for ${{ steps.date.outputs.date }}"
+          git push
+
+      - name: Dispatch cc-analysis workflow
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CC_PAT }}
+          repository: ${{ github.repository_owner }}/cc-analysis
+          event-type: new-raw-data
+          client-payload: '{"date": "${{ steps.date.outputs.date }}"}'
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf staging clean

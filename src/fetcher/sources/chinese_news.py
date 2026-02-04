@@ -1,8 +1,12 @@
 """Chinese-language news RSS fetcher.
 
-Fetches Chinese-language RSS feeds (Xinhua ZH, People's Daily ZH,
-Huanqiu/Global Times ZH, CDT ZH) and filters by China-related keywords
-using Chinese substring matching. Tags all articles with language: "zh".
+Fetches Chinese-language RSS feeds from:
+- Mainland China: Xinhua, People's Daily, Global Times, China Digital Times
+- Taiwan: Liberty Times (自由時報)
+- Hong Kong: RTHK (香港電台)
+
+Filters by China/Canada-related keywords using Chinese substring matching.
+Tags all articles with language: "zh" and region: "mainland"/"taiwan"/"hongkong".
 """
 
 from __future__ import annotations
@@ -23,36 +27,68 @@ from fetcher.http import request_with_retry
 logger = logging.getLogger(__name__)
 
 DEFAULT_FEEDS: list[dict[str, str]] = [
-    {"url": "http://www.xinhuanet.com/politics/xhll.xml", "name": "新华社"},
-    {"url": "http://www.people.com.cn/rss/politics.xml", "name": "人民日报"},
-    {"url": "https://www.huanqiu.com/rss.xml", "name": "环球时报"},
-    {"url": "https://chinadigitaltimes.net/chinese/feed", "name": "中国数字时代"},
+    # ── Mainland China (Simplified Chinese) ──
+    {"url": "http://www.xinhuanet.com/politics/xhll.xml", "name": "新华社", "region": "mainland"},
+    {"url": "http://www.people.com.cn/rss/politics.xml", "name": "人民日报", "region": "mainland"},
+    {"url": "https://www.huanqiu.com/rss.xml", "name": "环球时报", "region": "mainland"},
+    {"url": "https://chinadigitaltimes.net/chinese/feed", "name": "中国数字时代", "region": "mainland"},
+    # ── Taiwan (Traditional Chinese) ──
+    {"url": "https://news.ltn.com.tw/rss/politics.xml", "name": "自由時報", "region": "taiwan"},
+    {"url": "https://news.ltn.com.tw/rss/world.xml", "name": "自由時報國際", "region": "taiwan"},
+    # ── Hong Kong (Traditional Chinese) ──
+    {"url": "http://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml", "name": "香港電台", "region": "hongkong"},
+    {"url": "http://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cgreaterchina.xml", "name": "香港電台兩岸", "region": "hongkong"},
 ]
 
 # Chinese keywords for filtering — uses exact substring matching (no word boundaries)
+# Includes both Simplified (mainland) and Traditional (Taiwan/HK) variants
 CHINESE_KEYWORDS: list[str] = [
-    "加拿大",   # Canada
-    "渥太华",   # Ottawa
-    "特鲁多",   # Trudeau
-    "油菜籽",   # canola
-    "关税",     # tariff
-    "制裁",     # sanction
-    "贸易战",   # trade war
-    "台湾",     # Taiwan
-    "香港",     # Hong Kong
-    "新疆",     # Xinjiang
-    "维吾尔",   # Uyghur
-    "西藏",     # Tibet
-    "南海",     # South China Sea
-    "一带一路", # Belt and Road
-    "半导体",   # semiconductor
-    "稀土",     # rare earth
-    "华为",     # Huawei
-    "印太",     # Indo-Pacific
-    "金砖",     # BRICS
-    "外交",     # diplomacy
-    "国防",     # national defense
-    "军事",     # military
+    # ── Canada-specific ──
+    "加拿大",   # Canada (same in both)
+    "渥太华",   # Ottawa (Simplified)
+    "渥太華",   # Ottawa (Traditional)
+    "特鲁多",   # Trudeau (Simplified)
+    "特魯多",   # Trudeau (Traditional)
+    "卡尼",     # Carney (transliteration)
+    "油菜籽",   # canola (same in both)
+    # ── Trade/Economic ──
+    "关税",     # tariff (Simplified)
+    "關稅",     # tariff (Traditional)
+    "制裁",     # sanction (same in both)
+    "贸易战",   # trade war (Simplified)
+    "貿易戰",   # trade war (Traditional)
+    "半导体",   # semiconductor (Simplified)
+    "半導體",   # semiconductor (Traditional)
+    "稀土",     # rare earth (same in both)
+    "华为",     # Huawei (Simplified)
+    "華為",     # Huawei (Traditional)
+    # ── Geopolitical ──
+    "台湾",     # Taiwan (Simplified)
+    "臺灣",     # Taiwan (Traditional)
+    "台灣",     # Taiwan (Traditional alternate)
+    "香港",     # Hong Kong (same in both)
+    "新疆",     # Xinjiang (same in both)
+    "维吾尔",   # Uyghur (Simplified)
+    "維吾爾",   # Uyghur (Traditional)
+    "西藏",     # Tibet (same in both)
+    "南海",     # South China Sea (same in both)
+    "一带一路", # Belt and Road (Simplified)
+    "一帶一路", # Belt and Road (Traditional)
+    "印太",     # Indo-Pacific (same in both)
+    "金砖",     # BRICS (Simplified)
+    "金磚",     # BRICS (Traditional)
+    # ── Political/Military ──
+    "外交",     # diplomacy (same in both)
+    "国防",     # national defense (Simplified)
+    "國防",     # national defense (Traditional)
+    "军事",     # military (Simplified)
+    "軍事",     # military (Traditional)
+    "两岸",     # cross-strait (Simplified)
+    "兩岸",     # cross-strait (Traditional)
+    "统一",     # unification (Simplified)
+    "統一",     # unification (Traditional)
+    "独立",     # independence (Simplified)
+    "獨立",     # independence (Traditional)
 ]
 
 DEDUP_THRESHOLD = 0.75
@@ -77,7 +113,7 @@ def _is_duplicate(title: str, seen_titles: list[str]) -> bool:
     return False
 
 
-def _parse_feed(feed_content: str, feed_name: str) -> list[dict[str, Any]]:
+def _parse_feed(feed_content: str, feed_name: str, region: str = "mainland") -> list[dict[str, Any]]:
     """Parse an RSS feed and return a list of article dicts."""
     parsed = feedparser.parse(feed_content)
     articles: list[dict[str, Any]] = []
@@ -98,6 +134,7 @@ def _parse_feed(feed_content: str, feed_name: str) -> list[dict[str, Any]]:
             "body_snippet": BeautifulSoup(summary, "html.parser").get_text(strip=True)[:500],
             "date": published,
             "language": "zh",
+            "region": region,  # mainland, taiwan, or hongkong
         })
 
     return articles
@@ -194,6 +231,7 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
         for feed_info in feeds:
             feed_url = feed_info["url"]
             feed_name = feed_info.get("name", feed_url)
+            feed_region = feed_info.get("region", "mainland")
             result["feeds_checked"] += 1
 
             try:
@@ -206,7 +244,7 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
                 result["feed_errors"].append({"feed": feed_name, "error": str(exc)})
                 continue
 
-            articles = _parse_feed(resp.text, feed_name)
+            articles = _parse_feed(resp.text, feed_name, feed_region)
 
             for article in articles:
                 title = article["title"]

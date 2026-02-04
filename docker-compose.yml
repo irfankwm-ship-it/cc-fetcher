@@ -1,0 +1,143 @@
+# Docker Compose for local development and testing
+#
+# For GitHub Actions, use the workflow in .github/workflows/fetch.yml
+# which uses `docker run` directly for better compatibility.
+#
+# Usage:
+#   docker compose up --build          # Full pipeline
+#   docker compose run fetcher         # Fetch only
+#   docker compose run cleaner         # Clean only
+
+services:
+  # ===========================================================================
+  # FETCHER: Downloads raw data (has internet access)
+  # ===========================================================================
+  fetcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cc-fetcher
+
+    # Security hardening
+    user: "1000:1000"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    # Volumes
+    volumes:
+      - staging-data:/data/raw:rw
+      - fetcher-tmp:/tmp:rw
+
+    tmpfs:
+      - /home/fetcher/.cache/ms-playwright-tmp:size=100M,mode=1777
+
+    environment:
+      - CC_ENV=${CC_ENV:-prod}
+      - TZ=UTC
+
+    networks:
+      - internet
+      - internal
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
+  # CLEANER: Sanitizes data (air-gapped, no internet)
+  # ===========================================================================
+  cleaner:
+    build:
+      context: .
+      dockerfile: Dockerfile.cleaner
+    container_name: cc-cleaner
+
+    user: "1000:1000"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    volumes:
+      - staging-data:/staging:ro
+      - clean-data:/clean:rw
+
+    tmpfs:
+      - /tmp:size=50M,mode=1777
+
+    environment:
+      - TZ=UTC
+
+    # AIR-GAPPED: No internet access
+    networks:
+      - internal
+
+    depends_on:
+      - fetcher
+
+  # ===========================================================================
+  # MOVER: Copies clean data to final storage (no network)
+  # ===========================================================================
+  mover:
+    image: alpine:3.19
+    container_name: cc-mover
+
+    user: "1000:1000"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    volumes:
+      - clean-data:/clean:ro
+      - ${OUTPUT_DIR:-./output}:/final:rw
+
+    network_mode: none
+
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        DATE=$${DATE:-$(date -u +%Y-%m-%d)}
+        if [ -d "/clean/$$DATE" ]; then
+          mkdir -p "/final/$$DATE"
+          cp -r "/clean/$$DATE/"* "/final/$$DATE/"
+          echo "Moved clean data to /final/$$DATE"
+        else
+          echo "No data for $$DATE - checking root of /clean"
+          ls -la /clean/
+          # Copy whatever is there
+          cp -r /clean/* /final/ 2>/dev/null || echo "Nothing to copy"
+        fi
+
+    environment:
+      - DATE=${DATE:-}
+
+    depends_on:
+      - cleaner
+
+# ===========================================================================
+# Networks
+# ===========================================================================
+networks:
+  internet:
+    driver: bridge
+
+  internal:
+    driver: bridge
+    internal: true  # Air-gapped
+
+# ===========================================================================
+# Volumes
+# ===========================================================================
+volumes:
+  staging-data:
+  clean-data:
+  fetcher-tmp:

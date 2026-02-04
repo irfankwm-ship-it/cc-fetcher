@@ -115,15 +115,62 @@ mofcom:
 
 chinese_news:
   feeds:
-    - {url: "http://www.xinhuanet.com/politics/xhll.xml", name: "新华社"}
-    - {url: "http://www.people.com.cn/rss/politics.xml", name: "人民日报"}
-    - {url: "https://www.huanqiu.com/rss.xml", name: "环球时报"}
-    - {url: "https://chinadigitaltimes.net/chinese/feed", name: "中国数字时代"}
+    # ── Mainland China (Simplified Chinese) ──
+    - {url: "http://www.xinhuanet.com/politics/xhll.xml", name: "新华社", region: "mainland"}
+    - {url: "http://www.people.com.cn/rss/politics.xml", name: "人民日报", region: "mainland"}
+    - {url: "https://www.huanqiu.com/rss.xml", name: "环球时报", region: "mainland"}
+    - {url: "https://chinadigitaltimes.net/chinese/feed", name: "中国数字时代", region: "mainland"}
+    # ── Taiwan (Traditional Chinese) ──
+    - {url: "https://news.ltn.com.tw/rss/politics.xml", name: "自由時報", region: "taiwan"}
+    - {url: "https://news.ltn.com.tw/rss/world.xml", name: "自由時報國際", region: "taiwan"}
+    # ── Hong Kong (Traditional Chinese) ──
+    - {url: "http://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml", name: "香港電台", region: "hongkong"}
+    - {url: "http://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cgreaterchina.xml", name: "香港電台兩岸", region: "hongkong"}
   keywords:
-    - "加拿大"
-    - "渥太华"
-    - "关税"
-    - "台湾"
-    - "香港"
-    - "外交"
+    # ── Canada-specific ──
+    - "加拿大"    # Canada
+    - "渥太华"    # Ottawa (Simplified)
+    - "渥太華"    # Ottawa (Traditional)
+    - "特鲁多"    # Trudeau (Simplified)
+    - "特魯多"    # Trudeau (Traditional)
+    - "卡尼"      # Carney
+    - "油菜籽"    # canola
+    # ── Trade/Economic ──
+    - "关税"      # tariff (Simplified)
+    - "關稅"      # tariff (Traditional)
+    - "制裁"      # sanction
+    - "贸易战"    # trade war (Simplified)
+    - "貿易戰"    # trade war (Traditional)
+    - "半导体"    # semiconductor (Simplified)
+    - "半導體"    # semiconductor (Traditional)
+    - "稀土"      # rare earth
+    - "华为"      # Huawei (Simplified)
+    - "華為"      # Huawei (Traditional)
+    # ── Geopolitical ──
+    - "台湾"      # Taiwan (Simplified)
+    - "臺灣"      # Taiwan (Traditional)
+    - "台灣"      # Taiwan (Traditional alt)
+    - "香港"      # Hong Kong
+    - "新疆"      # Xinjiang
+    - "维吾尔"    # Uyghur (Simplified)
+    - "維吾爾"    # Uyghur (Traditional)
+    - "西藏"      # Tibet
+    - "南海"      # South China Sea
+    - "一带一路"  # Belt and Road (Simplified)
+    - "一帶一路"  # Belt and Road (Traditional)
+    - "印太"      # Indo-Pacific
+    - "金砖"      # BRICS (Simplified)
+    - "金磚"      # BRICS (Traditional)
+    # ── Political/Military ──
+    - "外交"      # diplomacy
+    - "国防"      # national defense (Simplified)
+    - "國防"      # national defense (Traditional)
+    - "军事"      # military (Simplified)
+    - "軍事"      # military (Traditional)
+    - "两岸"      # cross-strait (Simplified)
+    - "兩岸"      # cross-strait (Traditional)
+    - "统一"      # unification (Simplified)
+    - "統一"      # unification (Traditional)
+    - "独立"      # independence (Simplified)
+    - "獨立"      # independence (Traditional)
   timeout: 30
