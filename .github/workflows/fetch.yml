@@ -46,7 +46,8 @@ jobs:
       - name: Create staging directory
         run: |
           mkdir -p staging/${{ steps.date.outputs.date }}
-          chmod 700 staging
+          # Make accessible to container user 1000:1000
+          chmod -R 777 staging
 
       # =======================================================================
       # OPTION A: Docker-based fetch (more isolated, slower)
