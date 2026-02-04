@@ -181,7 +181,7 @@ def reconstruct_article(article: dict[str, Any]) -> dict[str, Any] | None:
             clean["date"] = date_val
 
     # Optional fields (sanitized)
-    for field in ["language", "category", "author"]:
+    for field in ["language", "category", "author", "region"]:
         if field in article:
             clean[field] = sanitize_string(str(article[field]), max_length=100)
 
@@ -191,6 +191,17 @@ def reconstruct_article(article: dict[str, Any]) -> dict[str, Any] | None:
             sanitize_string(str(t), max_length=50)
             for t in article["relevance_tags"][:20]  # Max 20 tags
         ]
+
+    # Matched keywords (list of strings from Chinese news filtering)
+    if "matched_keywords" in article and isinstance(article["matched_keywords"], list):
+        clean["matched_keywords"] = [
+            sanitize_string(str(kw), max_length=50)
+            for kw in article["matched_keywords"][:30]  # Max 30 keywords
+        ]
+
+    # Body snippet (shorter preview text)
+    if "body_snippet" in article:
+        clean["body_snippet"] = sanitize_string(str(article["body_snippet"]), max_length=1000)
 
     return clean if clean.get("title") or clean.get("source_url") else None
 
