@@ -68,6 +68,7 @@ jobs:
             -v "${{ github.workspace }}/staging:/data/raw:rw" \
             -v "${{ github.workspace }}/config:/app/config:ro" \
             -e CC_ENV=prod \
+            -e CC_CONFIG_DIR=/app \
             cc-fetcher:local \
             run --date ${{ steps.date.outputs.date }} --output-dir /data/raw
 
