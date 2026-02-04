@@ -1,0 +1,35 @@
+# Dockerfile for the air-gapped cleaner container
+#
+# This container:
+# - Has NO internet access (enforced by Docker network)
+# - Sanitizes and reconstructs data using CDR approach
+# - Runs as non-root with minimal privileges
+
+FROM python:3.12-slim-bookworm
+
+# Security: Create non-root user
+RUN groupadd --gid 1000 cleaner && \
+    useradd --uid 1000 --gid cleaner --shell /usr/sbin/nologin --create-home cleaner
+
+# Install only what's needed for data cleaning
+RUN pip install --no-cache-dir \
+    bleach==6.1.0 \
+    pydantic==2.6.0 \
+    && rm -rf /root/.cache
+
+# Copy the cleaner script
+WORKDIR /app
+COPY --chown=cleaner:cleaner scripts/cdr_cleaner.py ./
+
+# Create directories
+RUN mkdir -p /staging /clean && chown -R cleaner:cleaner /staging /clean
+
+# Switch to non-root
+USER cleaner
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD python -c "import bleach, pydantic; print('healthy')" || exit 1
+
+ENTRYPOINT ["python", "/app/cdr_cleaner.py"]
+CMD ["/staging", "/clean"]

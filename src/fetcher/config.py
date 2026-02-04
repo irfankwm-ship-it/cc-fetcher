@@ -14,7 +14,9 @@ from typing import Any
 import yaml
 
 VALID_ENVS = ("dev", "staging", "prod")
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+# Allow override via env var for Docker deployments
+_config_dir_override = os.environ.get("CC_CONFIG_DIR")
+PROJECT_ROOT = Path(_config_dir_override) if _config_dir_override else Path(__file__).resolve().parent.parent.parent
 
 
 @dataclass(frozen=True)

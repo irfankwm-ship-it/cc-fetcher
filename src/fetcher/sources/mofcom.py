@@ -1,62 +1,75 @@
 """MOFCOM (Ministry of Commerce) scraper.
 
 Scrapes the English-language MOFCOM site at
-http://english.mofcom.gov.cn/ for trade policy announcements
-relevant to Canada-China relations.
+http://english.mofcom.gov.cn/ for all trade policy announcements
+from the last 24 hours.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urljoin
 
-import httpx
 from bs4 import BeautifulSoup
 
 from fetcher.config import SourceConfig
-from fetcher.http import request_with_retry
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_URL = "http://english.mofcom.gov.cn/"
 
-CANADA_KEYWORDS = [
-    "Canada",
-    "Canadian",
-    "canola",
-    "pork",
-    "lobster",
-    "tariff",
-    "anti-dumping",
-    "countervailing",
-]
 
-TRADE_KEYWORDS = [
-    "tariff",
-    "trade",
-    "import",
-    "export",
-    "sanction",
-    "restriction",
-    "anti-dumping",
-    "countervailing",
-    "quota",
-    "subsid",
-    "rare earth",
-    "semiconductor",
-    "investigation",
-    "trade barrier",
-    "market access",
-]
+def _extract_timestamps(html: str) -> dict[str, datetime]:
+    """Extract article URL to timestamp mapping from parseToData() calls.
+
+    The MOFCOM page embeds timestamps in JavaScript calls like:
+    parseToData(1768995462538,1) which are milliseconds since Unix epoch.
+
+    Returns a dict mapping article URLs to their publication datetimes.
+    """
+    url_to_date: dict[str, datetime] = {}
+
+    # Find all parseToData timestamps and their positions
+    timestamp_pattern = re.compile(r"parseToData\((\d+),")
+    url_pattern = re.compile(r'/art/\d{4}/art_[a-f0-9]+\.html')
+
+    # Split HTML into sections to associate URLs with timestamps
+    # Each section typically contains article link(s) followed by a timestamp
+    sections = re.split(r"<section[^>]*>", html)
+
+    for section in sections:
+        # Find all article URLs in this section
+        urls = url_pattern.findall(section)
+        # Find timestamp in this section
+        ts_match = timestamp_pattern.search(section)
+
+        if urls and ts_match:
+            timestamp_ms = int(ts_match.group(1))
+            article_date = datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC)
+            for url in urls:
+                if url not in url_to_date:
+                    url_to_date[url] = article_date
+
+    return url_to_date
 
 
-def _extract_articles_from_html(html: str, base_url: str) -> list[dict[str, Any]]:
-    """Extract article links and titles from MOFCOM pages."""
+def _extract_articles_from_html(
+    html: str, base_url: str, cutoff: datetime
+) -> list[dict[str, Any]]:
+    """Extract article links and titles from MOFCOM pages.
+
+    Only includes articles published after the cutoff datetime.
+    """
     soup = BeautifulSoup(html, "html.parser")
     articles: list[dict[str, Any]] = []
-    seen_titles: set[str] = set()
+    seen_urls: set[str] = set()
+
+    # Get URL to timestamp mapping
+    url_to_date = _extract_timestamps(html)
 
     for link in soup.find_all("a", href=True):
         title = link.get_text(strip=True)
@@ -65,13 +78,31 @@ def _extract_articles_from_html(html: str, base_url: str) -> list[dict[str, Any]
         if not title or len(title) < 10:
             continue
 
-        # MOFCOM article URLs typically contain /article/ or date patterns
-        if not re.search(r"(?:/article/|/\d{6}/\d{8}/)", href):
+        # MOFCOM article URLs: /News/.../art/YYYY/art_*.html or /Policies/.../art/YYYY/art_*.html
+        url_match = re.search(r"/art/\d{4}/art_[a-f0-9]+\.html", href)
+        if not url_match:
             continue
 
-        if title in seen_titles:
+        url_path = url_match.group(0)
+
+        # Skip if we've already seen this URL
+        if url_path in seen_urls:
             continue
-        seen_titles.add(title)
+        seen_urls.add(url_path)
+
+        # Get article date from timestamp mapping
+        article_date = url_to_date.get(url_path)
+
+        # Filter: only include articles from last 24 hours
+        # Require a confirmed timestamp for accurate filtering
+        if not article_date:
+            # No timestamp found - skip for 24h filtering
+            continue
+
+        if article_date < cutoff:
+            continue
+
+        date_str = article_date.strftime("%Y-%m-%d")
 
         source_url = urljoin(base_url, href)
         articles.append({
@@ -79,70 +110,41 @@ def _extract_articles_from_html(html: str, base_url: str) -> list[dict[str, Any]
             "source_url": source_url,
             "source": "MOFCOM",
             "body": "",
-            "date": "",
+            "body_text": "",
+            "date": date_str,
         })
 
     return articles
 
 
-def _kw_match(keyword: str, text: str) -> bool:
-    """Case-insensitive keyword match with word boundaries."""
-    return bool(re.search(rf"\b{re.escape(keyword)}\b", text, re.IGNORECASE))
-
-
-def _filter_relevant(
-    articles: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Filter articles for Canada/trade relevance."""
-    relevant: list[dict[str, Any]] = []
-
-    for article in articles:
-        text = f"{article['title']} {article.get('body', '')}"
-        tags: list[str] = []
-
-        for kw in CANADA_KEYWORDS:
-            if _kw_match(kw, text):
-                tags.append(f"canada:{kw}")
-
-        for kw in TRADE_KEYWORDS:
-            if _kw_match(kw, text):
-                tags.append(f"trade:{kw}")
-
-        if tags:
-            article["relevance_tags"] = tags
-            relevant.append(article)
-
-    return relevant
-
-
-async def _fetch_article_body(
-    client: httpx.AsyncClient,
-    url: str,
-    timeout: int,
-) -> str:
+async def _fetch_article_body(url: str, timeout: int = 30) -> str:
     """Fetch and extract body text from a MOFCOM article page."""
+    import httpx
+
     try:
-        resp = await client.get(url, timeout=timeout)
-        resp.raise_for_status()
-    except (httpx.HTTPStatusError, httpx.RequestError) as exc:
-        logger.warning("Failed to fetch article %s: %s", url, exc)
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            resp = await client.get(url, timeout=timeout)
+            resp.raise_for_status()
+            html = resp.text
+
+            soup = BeautifulSoup(html, "html.parser")
+            selectors = [".art_con", ".TRS_Editor", ".article-body", "article", "#zoom", ".content"]
+            for selector in selectors:
+                container = soup.select_one(selector)
+                if container:
+                    paragraphs = container.find_all("p")
+                    texts = [p.get_text(strip=True) for p in paragraphs]
+                    text = " ".join(t for t in texts if t)
+                    if text and len(text) > 50:
+                        return text[:5000]
+            return ""
+    except Exception as exc:
+        logger.warning("MOFCOM article fetch failed for %s: %s", url, exc)
         return ""
-
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    for selector in [".art_con", ".article-body", "article", "#zoom"]:
-        container = soup.select_one(selector)
-        if container:
-            paragraphs = container.find_all("p")
-            text = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
-            if text:
-                return text[:3000]
-
-    return ""
 
 
 async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
-    """Fetch MOFCOM trade policy articles.
+    """Fetch all MOFCOM trade policy articles from the last 24 hours.
 
     Args:
         config: Source configuration with URL and retry settings.
@@ -151,39 +153,51 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     Returns:
         Dict with articles, counts, and metadata.
     """
+    import httpx
+
     url = config.get("url", DEFAULT_URL)
     result: dict[str, Any] = {
         "date": date,
         "articles": [],
         "total_scraped": 0,
-        "total_relevant": 0,
+        "total_fetched": 0,
         "source_url": url,
     }
 
+    # Calculate 24-hour cutoff (midnight UTC of target date minus 1 day)
+    target_date = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=UTC)
+    cutoff = target_date - timedelta(days=1)
+
     try:
+        # MOFCOM listing page is server-rendered, no JS needed
         async with httpx.AsyncClient(follow_redirects=True) as client:
-            resp = await request_with_retry(
-                client, "GET", url, retry=config.retry, timeout=config.timeout
-            )
+            resp = await client.get(url, timeout=config.timeout)
             resp.raise_for_status()
+            html = resp.text
 
-            articles = _extract_articles_from_html(resp.text, url)
-            result["total_scraped"] = len(articles)
+        articles = _extract_articles_from_html(html, url, cutoff)
+        result["total_scraped"] = len(articles)
 
-            for article in articles:
-                article["body"] = await _fetch_article_body(
-                    client, article["source_url"], config.timeout
-                )
+        if not articles:
+            logger.info("MOFCOM: no articles found in last 24 hours")
+            return result
 
-            relevant = _filter_relevant(articles)
-            result["total_relevant"] = len(relevant)
-            result["articles"] = relevant
+        logger.info("MOFCOM: fetching %d article bodies", len(articles))
 
-    except httpx.HTTPStatusError as exc:
-        logger.error("MOFCOM HTTP error: %s", exc)
-        result["error"] = f"HTTP {exc.response.status_code}"
-    except httpx.RequestError as exc:
-        logger.error("MOFCOM request error: %s", exc)
+        # Fetch all article bodies from last 24 hours
+        for article in articles:
+            body = await _fetch_article_body(article["source_url"], config.timeout)
+            article["body_text"] = body
+            article["body"] = body[:500] if body else ""
+            # Small delay between requests
+            await asyncio.sleep(1)
+
+        result["total_fetched"] = len(articles)
+        result["articles"] = articles
+        logger.info("MOFCOM: fetched %d articles from last 24 hours", len(articles))
+
+    except Exception as exc:
+        logger.error("MOFCOM error: %s", exc)
         result["error"] = str(exc)
 
     return result
