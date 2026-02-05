@@ -27,10 +27,13 @@ from fetcher.http import request_with_retry
 logger = logging.getLogger(__name__)
 
 DEFAULT_FEEDS: list[dict[str, str]] = [
-    # ── Mainland China (Simplified Chinese) ──
+    # ── Mainland China (Simplified Chinese) — Official/State ──
     {"url": "http://www.xinhuanet.com/politics/xhll.xml", "name": "新华社", "region": "mainland"},
     {"url": "http://www.people.com.cn/rss/politics.xml", "name": "人民日报", "region": "mainland"},
     {"url": "https://www.huanqiu.com/rss.xml", "name": "环球时报", "region": "mainland"},
+    # ── Mainland China (Simplified Chinese) — Business/Tech ──
+    {"url": "https://36kr.com/feed", "name": "36氪", "region": "mainland"},
+    # ── Mainland China (Simplified Chinese) — Independent/Critical ──
     {"url": "https://chinadigitaltimes.net/chinese/feed", "name": "中国数字时代", "region": "mainland"},
     # ── Taiwan (Traditional Chinese) ──
     {"url": "https://news.ltn.com.tw/rss/politics.xml", "name": "自由時報", "region": "taiwan"},
@@ -176,12 +179,12 @@ async def _fetch_article_body(
             paragraphs = container.find_all("p")
             text = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
             if text:
-                return text[:3000]
+                return text[:10000]  # Full article body for Chinese sources
 
     # Fallback: all paragraphs
     paragraphs = soup.find_all("p")
     text = " ".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20)
-    return text[:3000]
+    return text[:10000]  # Full article body for Chinese sources
 
 
 async def _enrich_articles_with_body(

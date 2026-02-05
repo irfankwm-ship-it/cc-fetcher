@@ -137,12 +137,27 @@ mofcom:
     max_retries: 5
     backoff_factor: 2.0
 
+caixin:
+  timeout: 90
+  retry:
+    max_retries: 3
+    backoff_factor: 1.5
+
+thepaper:
+  timeout: 90
+  retry:
+    max_retries: 3
+    backoff_factor: 1.5
+
 chinese_news:
   feeds:
-    # ── Mainland China (Simplified Chinese) ──
+    # ── Mainland China (Simplified Chinese) — Official/State ──
     - {url: "http://www.xinhuanet.com/politics/xhll.xml", name: "新华社", region: "mainland"}
     - {url: "http://www.people.com.cn/rss/politics.xml", name: "人民日报", region: "mainland"}
     - {url: "https://www.huanqiu.com/rss.xml", name: "环球时报", region: "mainland"}
+    # ── Mainland China (Simplified Chinese) — Business/Tech ──
+    - {url: "https://36kr.com/feed", name: "36氪", region: "mainland"}
+    # ── Mainland China (Simplified Chinese) — Independent/Critical ──
     - {url: "https://chinadigitaltimes.net/chinese/feed", name: "中国数字时代", region: "mainland"}
     # ── Taiwan (Traditional Chinese) ──
     - {url: "https://news.ltn.com.tw/rss/politics.xml", name: "自由時報", region: "taiwan"}

@@ -113,6 +113,18 @@ mofcom:
   url: "http://english.mofcom.gov.cn/"
   timeout: 30
 
+caixin:
+  timeout: 60
+  retry:
+    max_retries: 3
+    backoff_factor: 1.0
+
+thepaper:
+  timeout: 60
+  retry:
+    max_retries: 3
+    backoff_factor: 1.0
+
 chinese_news:
   feeds:
     # ── Mainland China (Simplified Chinese) ──

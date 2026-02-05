@@ -107,7 +107,7 @@ async def _fetch_article_with_playwright(url: str, timeout: int = 30000) -> str:
                     texts = [p.get_text(strip=True) for p in paragraphs]
                     text = " ".join(t for t in texts if t)
                     if text and len(text) > 100:
-                        return text[:5000]
+                        return text[:10000]  # Full article for Chinese government sources
             return ""
     except Exception as exc:
         logger.warning("Playwright fetch failed for %s: %s", url, exc)
