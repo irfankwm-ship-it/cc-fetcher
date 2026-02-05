@@ -136,7 +136,7 @@ async def _fetch_article_body(url: str, timeout: int = 30) -> str:
                     texts = [p.get_text(strip=True) for p in paragraphs]
                     text = " ".join(t for t in texts if t)
                     if text and len(text) > 50:
-                        return text[:5000]
+                        return text[:10000]  # Full article for Chinese government sources
             return ""
     except Exception as exc:
         logger.warning("MOFCOM article fetch failed for %s: %s", url, exc)

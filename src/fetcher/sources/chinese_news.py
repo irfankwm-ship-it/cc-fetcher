@@ -27,14 +27,21 @@ from fetcher.http import request_with_retry
 logger = logging.getLogger(__name__)
 
 DEFAULT_FEEDS: list[dict[str, str]] = [
-    # ── Mainland China (Simplified Chinese) ──
+    # ── Mainland China (Simplified Chinese) — Official/State ──
     {"url": "http://www.xinhuanet.com/politics/xhll.xml", "name": "新华社", "region": "mainland"},
     {"url": "http://www.people.com.cn/rss/politics.xml", "name": "人民日报", "region": "mainland"},
     {"url": "https://www.huanqiu.com/rss.xml", "name": "环球时报", "region": "mainland"},
+    # ── Mainland China (Simplified Chinese) — Business/Finance ──
+    {"url": "https://www.caixin.com/feed/feed.xml", "name": "财新网", "region": "mainland"},
+    {"url": "https://rss.ebrun.com/ebrun.xml", "name": "亿邦动力", "region": "mainland"},
+    {"url": "https://www.jiemian.com/rss/index.xml", "name": "界面新闻", "region": "mainland"},
+    {"url": "https://www.thepaper.cn/rss_newslist.jsp", "name": "澎湃新闻", "region": "mainland"},
+    # ── Mainland China (Simplified Chinese) — Independent/Critical ──
     {"url": "https://chinadigitaltimes.net/chinese/feed", "name": "中国数字时代", "region": "mainland"},
     # ── Taiwan (Traditional Chinese) ──
     {"url": "https://news.ltn.com.tw/rss/politics.xml", "name": "自由時報", "region": "taiwan"},
     {"url": "https://news.ltn.com.tw/rss/world.xml", "name": "自由時報國際", "region": "taiwan"},
+    {"url": "https://www.cna.com.tw/RSS/realtime/RSS-RealTime.xml", "name": "中央社", "region": "taiwan"},
     # ── Hong Kong (Traditional Chinese) ──
     {"url": "http://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml", "name": "香港電台", "region": "hongkong"},
     {"url": "http://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cgreaterchina.xml", "name": "香港電台兩岸", "region": "hongkong"},
@@ -176,12 +183,12 @@ async def _fetch_article_body(
             paragraphs = container.find_all("p")
             text = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
             if text:
-                return text[:3000]
+                return text[:10000]  # Full article body for Chinese sources
 
     # Fallback: all paragraphs
     paragraphs = soup.find_all("p")
     text = " ".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20)
-    return text[:3000]
+    return text[:10000]  # Full article body for Chinese sources
 
 
 async def _enrich_articles_with_body(

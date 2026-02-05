@@ -84,13 +84,13 @@ def _extract_article_body(html: str) -> str:
             if paragraphs:
                 text = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
                 if len(text) > 50:  # Meaningful content
-                    return text[:2000]  # Cap at 2000 chars
+                    return text[:10000]  # Cap at 10000 chars for full Chinese articles
 
     # Fallback: find any substantial paragraph content
     all_paragraphs = soup.find_all("p")
     texts = [p.get_text(strip=True) for p in all_paragraphs if len(p.get_text(strip=True)) > 50]
     if texts:
-        return " ".join(texts[:5])[:2000]
+        return " ".join(texts[:10])[:10000]  # More paragraphs, higher limit for Chinese
 
     return ""
 
