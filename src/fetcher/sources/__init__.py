@@ -20,6 +20,8 @@ SOURCE_REGISTRY: dict[str, str] = {
     "mfa": "fetcher.sources.mfa",
     "mofcom": "fetcher.sources.mofcom",
     "chinese_news": "fetcher.sources.chinese_news",
+    "caixin": "fetcher.sources.caixin_scraper",
+    "thepaper": "fetcher.sources.thepaper_scraper",
 }
 
 
