@@ -137,6 +137,18 @@ mofcom:
     max_retries: 5
     backoff_factor: 2.0
 
+caixin:
+  timeout: 90
+  retry:
+    max_retries: 3
+    backoff_factor: 1.5
+
+thepaper:
+  timeout: 90
+  retry:
+    max_retries: 3
+    backoff_factor: 1.5
+
 chinese_news:
   feeds:
     # ── Mainland China (Simplified Chinese) — Official/State ──
