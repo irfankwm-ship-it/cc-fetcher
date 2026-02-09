@@ -41,6 +41,9 @@ DEFAULT_FEEDS: list[dict[str, str]] = [
     # ── Hong Kong (Traditional Chinese) ──
     {"url": "http://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml", "name": "香港電台", "region": "hongkong"},
     {"url": "http://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cgreaterchina.xml", "name": "香港電台兩岸", "region": "hongkong"},
+    # ── International Chinese-Language Media ──
+    {"url": "https://www.bbc.com/zhongwen/simp/index.xml", "name": "BBC中文", "region": "international"},
+    {"url": "https://rss.dw.com/xml/rss-chi-all", "name": "德国之声", "region": "international"},
 ]
 
 # Chinese keywords for filtering — uses exact substring matching (no word boundaries)
