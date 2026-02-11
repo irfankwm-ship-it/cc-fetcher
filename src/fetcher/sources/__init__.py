@@ -2,39 +2,50 @@
 
 from __future__ import annotations
 
+import importlib
+import logging
+import pkgutil
 from typing import TYPE_CHECKING
+
+from fetcher.models import FetchResult, wrap_result
+from fetcher.sources._registry import SOURCE_REGISTRY, register_source
 
 if TYPE_CHECKING:
     from fetcher.config import SourceConfig
 
-# Registry mapping source names to their fetch functions.
-# Each fetch function has the signature:
-#   async def fetch(config: SourceConfig, date: str) -> dict
-SOURCE_REGISTRY: dict[str, str] = {
-    "parliament": "fetcher.sources.parliament",
-    "statcan": "fetcher.sources.statcan",
-    "yahoo_finance": "fetcher.sources.yahoo_finance",
-    "news": "fetcher.sources.news_scraper",
-    "xinhua": "fetcher.sources.xinhua",
-    "global_affairs": "fetcher.sources.global_affairs",
-    "mfa": "fetcher.sources.mfa",
-    "mofcom": "fetcher.sources.mofcom",
-    "chinese_news": "fetcher.sources.chinese_news",
-    "caixin": "fetcher.sources.caixin_scraper",
-    "thepaper": "fetcher.sources.thepaper_scraper",
-}
+logger = logging.getLogger(__name__)
+
+__all__ = ["SOURCE_REGISTRY", "register_source", "run_source", "FetchResult", "wrap_result"]
 
 
-async def run_source(name: str, config: SourceConfig, date: str) -> dict:
-    """Dynamically import and run a source fetcher by name.
+def _discover_sources() -> None:
+    """Auto-import all source modules so their @register_source decorators fire."""
+    package_path = __path__  # type: ignore[name-defined]
+    for module_info in pkgutil.iter_modules(package_path):
+        if module_info.name.startswith("_"):
+            continue
+        try:
+            importlib.import_module(f"fetcher.sources.{module_info.name}")
+        except Exception:
+            logger.exception("Failed to import source module: %s", module_info.name)
+
+
+# Populate the registry on first import
+_discover_sources()
+
+
+async def run_source(name: str, config: SourceConfig, date: str, **kwargs) -> FetchResult:
+    """Run a source fetcher by name.
 
     Args:
         name: Registered source name.
         config: Source-specific configuration.
         date: Target date string (YYYY-MM-DD).
+        **kwargs: Additional keyword arguments passed to the fetch function
+                  (e.g. ``client``, ``limiter``).
 
     Returns:
-        Raw data dictionary from the source.
+        A :class:`FetchResult` wrapping the source data.
 
     Raises:
         KeyError: If the source name is not registered.
@@ -42,7 +53,5 @@ async def run_source(name: str, config: SourceConfig, date: str) -> dict:
     if name not in SOURCE_REGISTRY:
         raise KeyError(f"Unknown source: '{name}'. Available: {list(SOURCE_REGISTRY.keys())}")
 
-    import importlib
-
-    module = importlib.import_module(SOURCE_REGISTRY[name])
-    return await module.fetch(config, date)
+    raw = await SOURCE_REGISTRY[name](config, date, **kwargs)
+    return wrap_result(name, date, raw)

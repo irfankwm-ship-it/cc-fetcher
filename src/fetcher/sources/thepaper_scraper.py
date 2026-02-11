@@ -17,6 +17,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from fetcher.config import SourceConfig
+from fetcher.sources._registry import register_source
 
 logger = logging.getLogger(__name__)
 
@@ -163,8 +164,12 @@ async def _fetch_article_body(
                 continue
 
 
-async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
+@register_source("thepaper")
+async def fetch(config: SourceConfig, date: str, **kwargs) -> dict[str, Any]:
     """Fetch articles from The Paper by web scraping.
+
+    Creates its own client with custom User-Agent headers required
+    by The Paper. The shared ``client`` kwarg is accepted but not used.
 
     Args:
         config: Source configuration.

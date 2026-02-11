@@ -20,6 +20,7 @@ from bs4 import BeautifulSoup
 
 from fetcher.config import SourceConfig
 from fetcher.http import request_with_retry
+from fetcher.sources._registry import register_source
 
 logger = logging.getLogger(__name__)
 
@@ -263,12 +264,14 @@ def _filter_relevant(
     return filtered
 
 
-async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
+@register_source("xinhua")
+async def fetch(config: SourceConfig, date: str, *, client=None, **kwargs) -> dict[str, Any]:
     """Fetch and filter Xinhua content from multiple section pages.
 
     Args:
         config: Source configuration with URL and timeout.
         date: Target date (YYYY-MM-DD).
+        client: Optional shared httpx.AsyncClient.
 
     Returns:
         Dictionary with filtered articles and metadata.
@@ -282,11 +285,13 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     seen_titles: set[str] = set()
     errors: list[str] = []
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    should_close = client is None
+    _client = client or httpx.AsyncClient(follow_redirects=True, timeout=timeout)
+    try:
         for url in urls:
             try:
                 resp = await request_with_retry(
-                    client, "GET", url,
+                    _client, "GET", url,
                     retry=config.retry,
                     timeout=timeout,
                 )
@@ -320,10 +325,13 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
 
         async def fetch_with_semaphore(article: dict[str, Any]) -> None:
             async with semaphore:
-                await _fetch_article_body(client, article, timeout)
+                await _fetch_article_body(_client, article, timeout)
 
         await asyncio.gather(*[fetch_with_semaphore(a) for a in relevant])
         logger.info("Xinhua: fetched bodies for %d relevant articles", len(relevant))
+    finally:
+        if should_close:
+            await _client.aclose()
 
     return {
         "date": date,

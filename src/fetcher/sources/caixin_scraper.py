@@ -17,6 +17,7 @@ from bs4 import BeautifulSoup
 
 from fetcher.config import SourceConfig
 from fetcher.http import request_with_retry
+from fetcher.sources._registry import register_source
 
 logger = logging.getLogger(__name__)
 
@@ -174,8 +175,12 @@ async def _fetch_article_body(
             article["date"] = parsed.strftime("%Y-%m-%d")
 
 
-async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
+@register_source("caixin")
+async def fetch(config: SourceConfig, date: str, **kwargs) -> dict[str, Any]:
     """Fetch articles from Caixin by web scraping.
+
+    Creates its own client with custom User-Agent headers required
+    by Caixin. The shared ``client`` kwarg is accepted but not used.
 
     Args:
         config: Source configuration.

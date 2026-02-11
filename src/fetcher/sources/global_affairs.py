@@ -18,6 +18,7 @@ import httpx
 
 from fetcher.config import SourceConfig
 from fetcher.http import request_with_retry
+from fetcher.sources._registry import register_source
 
 logger = logging.getLogger(__name__)
 
@@ -104,12 +105,14 @@ def _filter_china_related(
     return filtered
 
 
-async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
+@register_source("global_affairs")
+async def fetch(config: SourceConfig, date: str, *, client=None, **kwargs) -> dict[str, Any]:
     """Fetch and filter Global Affairs Canada news.
 
     Args:
         config: Source configuration with API URL and timeout.
         date: Target date (YYYY-MM-DD).
+        client: Optional shared httpx.AsyncClient.
 
     Returns:
         Dictionary with filtered articles and metadata.
@@ -123,7 +126,9 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     # Fetch English and French news across departments and content types
     all_articles: list[dict[str, Any]] = []
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    should_close = client is None
+    _client = client or httpx.AsyncClient(follow_redirects=True, timeout=timeout)
+    try:
         for dept in depts:
             for content_type in content_types:
                 for lang in ("en", "fr"):
@@ -138,7 +143,7 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
 
                     try:
                         resp = await request_with_retry(
-                            client, "GET", url,
+                            _client, "GET", url,
                             retry=config.retry,
                             params=params, timeout=timeout,
                         )
@@ -160,6 +165,9 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
                             "GAC %s/%s/%s request error: %s",
                             dept[:20], content_type, lang, exc,
                         )
+    finally:
+        if should_close:
+            await _client.aclose()
 
     # Filter by recency — keep articles from the last 7 days
     cutoff = datetime.strptime(date, "%Y-%m-%d") - timedelta(days=7)

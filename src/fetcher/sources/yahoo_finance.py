@@ -24,6 +24,7 @@ from typing import Any
 import yfinance as yf
 
 from fetcher.config import SourceConfig
+from fetcher.sources._registry import register_source
 
 logger = logging.getLogger(__name__)
 
@@ -417,12 +418,15 @@ def _fetch_all_sync(config: SourceConfig, date: str) -> dict[str, Any]:
     }
 
 
-async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
+@register_source("yahoo_finance")
+async def fetch(config: SourceConfig, date: str, **kwargs) -> dict[str, Any]:
     """Fetch Chinese market index data, sector indices, and top movers.
 
     Args:
         config: Source configuration with index, sector, and watchlist definitions.
         date: Target date (YYYY-MM-DD).
+        **kwargs: Accepts ``client`` and ``limiter`` for API compatibility
+                  but ignores them (yfinance uses its own HTTP stack).
 
     Returns:
         Dictionary with index data, sector data, and movers for all configured tickers.

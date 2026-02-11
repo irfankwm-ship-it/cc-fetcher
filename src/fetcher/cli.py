@@ -18,8 +18,10 @@ from pathlib import Path
 from typing import Any
 
 import click
+import httpx
 
 from fetcher.config import AppConfig, load_config
+from fetcher.http import DomainRateLimiter
 from fetcher.output import write_raw
 from fetcher.sources import SOURCE_REGISTRY, run_source
 
@@ -31,11 +33,31 @@ logging.basicConfig(
 logger = logging.getLogger("fetcher")
 
 
+def _validate_registry_config(config: AppConfig) -> None:
+    """Log warnings for mismatches between registry and config.
+
+    Warns about:
+      - Sources registered but missing from config (will use defaults).
+      - Sources in config but not in registry (will be ignored).
+    """
+    registry_names = set(SOURCE_REGISTRY.keys())
+    config_names = set(config.sources.keys())
+
+    for name in sorted(registry_names - config_names):
+        logger.warning("Source '%s' is registered but has no config entry (using defaults)", name)
+
+    for name in sorted(config_names - registry_names):
+        logger.warning("Config entry '%s' has no registered source (will be ignored)", name)
+
+
 async def _run_single_source(
     name: str,
     config: AppConfig,
     date: str,
     output_dir: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    limiter: DomainRateLimiter | None = None,
 ) -> dict[str, Any]:
     """Run a single source fetcher and write output.
 
@@ -50,8 +72,10 @@ async def _run_single_source(
 
     logger.info("Fetching %s ...", name)
     try:
-        data = await run_source(name, source_config, date)
-        out_path = write_raw(date, name, data, output_dir)
+        result = await run_source(
+            name, source_config, date, client=client, limiter=limiter,
+        )
+        out_path = write_raw(date, name, result.to_dict(), output_dir)
         logger.info("  -> wrote %s", out_path)
         return {"source": name, "status": "ok", "output": str(out_path)}
     except Exception as exc:
@@ -70,18 +94,37 @@ async def _run_all(
     One source failing does not stop others. Errors are captured and returned.
     """
     sources_to_run = [source_filter] if source_filter else list(SOURCE_REGISTRY.keys())
-    results: list[dict[str, Any]] = []
 
-    for name in sources_to_run:
-        if name not in SOURCE_REGISTRY:
-            logger.error("Unknown source: '%s'. Available: %s", name, list(SOURCE_REGISTRY.keys()))
-            results.append({"source": name, "status": "error", "error": "Unknown source"})
-            continue
+    if not source_filter:
+        _validate_registry_config(config)
 
-        result = await _run_single_source(name, config, date, output_dir)
-        results.append(result)
+    async with httpx.AsyncClient(follow_redirects=True, timeout=120) as shared_client:
+        limiter = DomainRateLimiter()
 
-    return results
+        # Single-source mode runs directly (no gather overhead)
+        if source_filter:
+            if source_filter not in SOURCE_REGISTRY:
+                logger.error(
+                    "Unknown source: '%s'. Available: %s",
+                    source_filter, list(SOURCE_REGISTRY.keys()),
+                )
+                return [{"source": source_filter, "status": "error", "error": "Unknown source"}]
+            result = await _run_single_source(
+                source_filter, config, date, output_dir,
+                client=shared_client, limiter=limiter,
+            )
+            return [result]
+
+        # Run all sources concurrently
+        results = await asyncio.gather(*[
+            _run_single_source(
+                name, config, date, output_dir,
+                client=shared_client, limiter=limiter,
+            )
+            for name in sources_to_run
+            if name in SOURCE_REGISTRY
+        ])
+        return list(results)
 
 
 @click.group()

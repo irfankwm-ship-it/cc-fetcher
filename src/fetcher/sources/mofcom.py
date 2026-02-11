@@ -17,6 +17,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from fetcher.config import SourceConfig
+from fetcher.sources._registry import register_source
 
 logger = logging.getLogger(__name__)
 
@@ -143,12 +144,14 @@ async def _fetch_article_body(url: str, timeout: int = 30) -> str:
         return ""
 
 
-async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
+@register_source("mofcom")
+async def fetch(config: SourceConfig, date: str, *, client=None, **kwargs) -> dict[str, Any]:
     """Fetch all MOFCOM trade policy articles from the last 24 hours.
 
     Args:
         config: Source configuration with URL and retry settings.
         date: Target date string (YYYY-MM-DD).
+        client: Optional shared httpx.AsyncClient.
 
     Returns:
         Dict with articles, counts, and metadata.
@@ -170,10 +173,15 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
 
     try:
         # MOFCOM listing page is server-rendered, no JS needed
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            resp = await client.get(url, timeout=config.timeout)
+        should_close = client is None
+        _client = client or httpx.AsyncClient(follow_redirects=True, timeout=config.timeout)
+        try:
+            resp = await _client.get(url, timeout=config.timeout)
             resp.raise_for_status()
             html = resp.text
+        finally:
+            if should_close:
+                await _client.aclose()
 
         articles = _extract_articles_from_html(html, url, cutoff)
         result["total_scraped"] = len(articles)

@@ -19,6 +19,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from fetcher.config import SourceConfig
+from fetcher.sources._registry import register_source
 
 logger = logging.getLogger(__name__)
 
@@ -114,14 +115,16 @@ async def _fetch_article_with_playwright(url: str, timeout: int = 30000) -> str:
         return ""
 
 
-async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
+@register_source("mfa")
+async def fetch(config: SourceConfig, date: str, *, client=None, **kwargs) -> dict[str, Any]:
     """Fetch all MFA press conference articles from the last 24 hours.
 
-    Uses Playwright to handle JavaScript-rendered content.
+    Uses the shared client for the listing page and Playwright for article bodies.
 
     Args:
         config: Source configuration with URL and retry settings.
         date: Target date string (YYYY-MM-DD).
+        client: Optional shared httpx.AsyncClient.
 
     Returns:
         Dict with articles, counts, and metadata.
@@ -143,11 +146,16 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
 
     try:
         # Fetch listing page (doesn't need JS)
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            resp = await client.get(url, timeout=config.timeout)
+        should_close = client is None
+        _client = client or httpx.AsyncClient(follow_redirects=True, timeout=config.timeout)
+        try:
+            resp = await _client.get(url, timeout=config.timeout)
             resp.raise_for_status()
             articles = _extract_articles_from_html(resp.text, url, cutoff)
             result["total_scraped"] = len(articles)
+        finally:
+            if should_close:
+                await _client.aclose()
 
         if not articles:
             logger.info("MFA: no articles found in last 24 hours")

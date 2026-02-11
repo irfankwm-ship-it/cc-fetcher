@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 
 from fetcher.config import SourceConfig
+from fetcher.sources._registry import register_source
 
 logger = logging.getLogger(__name__)
 
@@ -176,12 +177,14 @@ async def _search_debate_content(
     return counts
 
 
-async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
+@register_source("parliament")
+async def fetch(config: SourceConfig, date: str, *, client=None, **kwargs) -> dict[str, Any]:
     """Fetch all parliamentary data for the given date.
 
     Args:
         config: Source configuration with URLs, timeout, keywords.
         date: Target date (YYYY-MM-DD).
+        client: Optional shared httpx.AsyncClient.
 
     Returns:
         Dictionary with 'bills' list and 'hansard_stats'.
@@ -191,20 +194,25 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     keywords = config.get("keywords", DEFAULT_KEYWORDS)
     timeout = config.timeout
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    should_close = client is None
+    _client = client or httpx.AsyncClient(follow_redirects=True, timeout=timeout)
+    try:
         # Fetch bills and recent debates in parallel
-        bills_task = _fetch_bills(client, base_url, session, timeout)
-        debates_task = _fetch_recent_debates(client, base_url, timeout)
+        bills_task = _fetch_bills(_client, base_url, session, timeout)
+        debates_task = _fetch_recent_debates(_client, base_url, timeout)
         bills, recent_debates = await asyncio.gather(bills_task, debates_task)
 
         # Search recent debates for keyword mentions
         keyword_totals: dict[str, int] = {kw: 0 for kw in keywords}
         for debate in recent_debates:
             counts = await _search_debate_content(
-                client, base_url, debate["url"], keywords, timeout,
+                _client, base_url, debate["url"], keywords, timeout,
             )
             for kw, count in counts.items():
                 keyword_totals[kw] = keyword_totals.get(kw, 0) + count
+    finally:
+        if should_close:
+            await _client.aclose()
 
     total_mentions = sum(keyword_totals.values())
 

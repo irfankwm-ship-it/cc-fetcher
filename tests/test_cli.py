@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -10,7 +11,9 @@ import pytest
 from click.testing import CliRunner
 
 from fetcher.cli import main
+from fetcher.models import FetchResult
 from fetcher.output import write_raw
+from fetcher.sources import SOURCE_REGISTRY
 
 
 @pytest.fixture
@@ -67,7 +70,10 @@ def test_run_single_source(
 ) -> None:
     """Test running a single source."""
     mock_load_config.return_value = dev_app_config
-    mock_run_source.return_value = {"bills": [], "hansard_stats": {"total_mentions": 0}}
+    mock_run_source.return_value = FetchResult(
+        source="parliament", date="2025-01-17",
+        data={"bills": [], "hansard_stats": {"total_mentions": 0}},
+    )
 
     output_dir = str(tmp_path / "output")
     result = runner.invoke(
@@ -91,7 +97,9 @@ def test_run_all_sources(
 ) -> None:
     """Test running all sources."""
     mock_load_config.return_value = dev_app_config
-    mock_run_source.return_value = {"data": "test"}
+    mock_run_source.return_value = FetchResult(
+        source="test", date="2025-01-17", data={"data": "test"},
+    )
 
     output_dir = str(tmp_path / "output")
     result = runner.invoke(
@@ -100,7 +108,7 @@ def test_run_all_sources(
     )
 
     # Should have called run_source for each registered source
-    assert mock_run_source.call_count == 6
+    assert mock_run_source.call_count == len(SOURCE_REGISTRY)
     assert result.exit_code == 0
 
 
@@ -116,14 +124,10 @@ def test_run_handles_source_failure(
     """Test that one source failing doesn't stop others and exits with code 1."""
     mock_load_config.return_value = dev_app_config
 
-    call_count = 0
-
-    async def side_effect(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
+    async def side_effect(name, *args, **kwargs):
+        if name == "parliament":
             raise RuntimeError("Network error")
-        return {"data": "ok"}
+        return FetchResult(source=name, date="2025-01-17", data={"data": "ok"})
 
     mock_run_source.side_effect = side_effect
 
@@ -134,7 +138,7 @@ def test_run_handles_source_failure(
     )
 
     # All sources should have been attempted
-    assert mock_run_source.call_count == 6
+    assert mock_run_source.call_count == len(SOURCE_REGISTRY)
     # Should exit with 1 because one source failed
     assert result.exit_code == 1
 
@@ -181,3 +185,78 @@ def test_write_raw_overwrites_existing(tmp_output_dir: Path) -> None:
         written = json.load(f)
 
     assert written["data"]["version"] == 2
+
+
+@patch("fetcher.cli.run_source")
+@patch("fetcher.cli.load_config")
+def test_validate_warns_missing_config(
+    mock_load_config: AsyncMock,
+    mock_run_source: AsyncMock,
+    runner: CliRunner,
+    tmp_path: Path,
+    caplog,
+) -> None:
+    """Test that a source in registry but not in config triggers a warning."""
+    from fetcher.config import AppConfig, SourceConfig
+
+    # Config with only one source — all others are "missing"
+    sparse_config = AppConfig(
+        env="dev",
+        sources={"parliament": SourceConfig(name="parliament")},
+    )
+    mock_load_config.return_value = sparse_config
+    mock_run_source.return_value = FetchResult(
+        source="test", date="2025-01-17", data={"data": "ok"},
+    )
+
+    output_dir = str(tmp_path / "output")
+    with caplog.at_level(logging.WARNING):
+        runner.invoke(
+            main,
+            ["run", "--date", "2025-01-17", "--output-dir", output_dir],
+        )
+
+    assert any("has no config entry" in msg for msg in caplog.messages)
+
+
+@patch("fetcher.cli.run_source")
+@patch("fetcher.cli.load_config")
+def test_validate_warns_unknown_config(
+    mock_load_config: AsyncMock,
+    mock_run_source: AsyncMock,
+    runner: CliRunner,
+    tmp_path: Path,
+    caplog,
+) -> None:
+    """Test that a config entry with no registered source triggers a warning."""
+    from fetcher.config import AppConfig, SourceConfig
+
+    config_with_extra = AppConfig(
+        env="dev",
+        sources={
+            "parliament": SourceConfig(name="parliament"),
+            "nonexistent_source": SourceConfig(name="nonexistent_source"),
+        },
+    )
+    mock_load_config.return_value = config_with_extra
+    mock_run_source.return_value = FetchResult(
+        source="test", date="2025-01-17", data={"data": "ok"},
+    )
+
+    output_dir = str(tmp_path / "output")
+    with caplog.at_level(logging.WARNING):
+        runner.invoke(
+            main,
+            ["run", "--date", "2025-01-17", "--output-dir", output_dir],
+        )
+
+    assert any("has no registered source" in msg for msg in caplog.messages)
+
+
+def test_auto_discovery_finds_all_sources() -> None:
+    """Test that auto-discovery registers all 11 source modules."""
+    expected = {
+        "parliament", "statcan", "yahoo_finance", "news", "xinhua",
+        "global_affairs", "mfa", "mofcom", "chinese_news", "caixin", "thepaper",
+    }
+    assert set(SOURCE_REGISTRY.keys()) == expected

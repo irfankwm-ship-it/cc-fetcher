@@ -23,6 +23,7 @@ from bs4 import BeautifulSoup
 
 from fetcher.config import SourceConfig
 from fetcher.http import request_with_retry
+from fetcher.sources._registry import register_source
 
 logger = logging.getLogger(__name__)
 
@@ -208,12 +209,14 @@ async def _enrich_articles_with_body(
     await asyncio.gather(*[_fetch_one(a) for a in articles])
 
 
-async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
+@register_source("chinese_news")
+async def fetch(config: SourceConfig, date: str, *, client=None, **kwargs) -> dict[str, Any]:
     """Fetch Chinese-language news articles from RSS feeds.
 
     Args:
         config: Source configuration with feeds and keyword settings.
         date: Target date string (YYYY-MM-DD).
+        client: Optional shared httpx.AsyncClient.
 
     Returns:
         Dict with filtered articles, counts, and metadata.
@@ -233,7 +236,9 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     all_articles: list[dict[str, Any]] = []
     seen_titles: list[str] = []
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    should_close = client is None
+    _client = client or httpx.AsyncClient(follow_redirects=True, timeout=config.timeout)
+    try:
         for feed_info in feeds:
             feed_url = feed_info["url"]
             feed_name = feed_info.get("name", feed_url)
@@ -242,7 +247,7 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
 
             try:
                 resp = await request_with_retry(
-                    client, "GET", feed_url, retry=config.retry, timeout=config.timeout
+                    _client, "GET", feed_url, retry=config.retry, timeout=config.timeout
                 )
                 resp.raise_for_status()
             except (httpx.HTTPStatusError, httpx.RequestError) as exc:
@@ -271,7 +276,10 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
 
         # Enrich with full body text
         if all_articles:
-            await _enrich_articles_with_body(client, all_articles, config.timeout)
+            await _enrich_articles_with_body(_client, all_articles, config.timeout)
+    finally:
+        if should_close:
+            await _client.aclose()
 
     result["articles"] = all_articles
     result["total_articles"] = len(all_articles)

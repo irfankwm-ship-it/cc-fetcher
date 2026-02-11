@@ -45,6 +45,7 @@ from bs4 import BeautifulSoup
 
 from fetcher.config import RetryConfig, SourceConfig
 from fetcher.http import request_with_retry
+from fetcher.sources._registry import register_source
 
 # Lighter retry for individual article fetches (many URLs, don't wait too long)
 DEFAULT_ARTICLE_RETRY = RetryConfig(max_retries=1, backoff_factor=0.3)
@@ -304,7 +305,8 @@ async def _enrich_articles_with_body(
     await asyncio.gather(*[_fetch_one(a) for a in articles])
 
 
-async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
+@register_source("news")
+async def fetch(config: SourceConfig, date: str, *, client=None, **kwargs) -> dict[str, Any]:
     """Fetch and filter news articles from RSS feeds.
 
     After keyword filtering, fetches each article's full page to
@@ -313,6 +315,7 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     Args:
         config: Source configuration with feeds list and keywords.
         date: Target date (YYYY-MM-DD).
+        client: Optional shared httpx.AsyncClient.
 
     Returns:
         Dictionary with filtered articles array and metadata.
@@ -325,14 +328,16 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
     seen_titles: list[str] = []
     feed_errors: list[dict[str, str]] = []
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    should_close = client is None
+    _client = client or httpx.AsyncClient(follow_redirects=True, timeout=timeout)
+    try:
         for feed_cfg in feeds:
             feed_url = feed_cfg.get("url", "")
             feed_name = feed_cfg.get("name", feed_url)
 
             try:
                 resp = await request_with_retry(
-                    client, "GET", feed_url,
+                    _client, "GET", feed_url,
                     retry=config.retry,
                     timeout=timeout,
                 )
@@ -363,9 +368,12 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
 
         # Fetch full article bodies for all matched articles
         logger.info("Fetching full article bodies for %d articles...", len(all_articles))
-        await _enrich_articles_with_body(client, all_articles)
+        await _enrich_articles_with_body(_client, all_articles)
         enriched = sum(1 for a in all_articles if a.get("body_text"))
         logger.info("Enriched %d/%d articles with full body text", enriched, len(all_articles))
+    finally:
+        if should_close:
+            await _client.aclose()
 
     return {
         "date": date,

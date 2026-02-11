@@ -2,13 +2,18 @@
 
 Wraps httpx.AsyncClient with configurable retry logic for
 transient failures (429, 500, 502, 503, 504).
+
+Also provides :class:`DomainRateLimiter` for limiting concurrent
+requests to the same domain across sources.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -17,6 +22,38 @@ from fetcher.config import RetryConfig
 logger = logging.getLogger(__name__)
 
 DEFAULT_RETRY = RetryConfig()
+
+
+class DomainRateLimiter:
+    """Limit concurrent requests per domain.
+
+    Each domain gets its own :class:`asyncio.Semaphore` capped at
+    *max_per_domain* concurrent requests.  Semaphores are created lazily
+    on first use and reused thereafter.
+
+    Usage::
+
+        limiter = DomainRateLimiter(max_per_domain=5)
+        async with limiter.acquire("https://example.com/page"):
+            resp = await client.get(...)
+    """
+
+    def __init__(self, max_per_domain: int = 5) -> None:
+        self._max = max_per_domain
+        self._semaphores: dict[str, asyncio.Semaphore] = {}
+
+    def _domain(self, url: str) -> str:
+        """Extract the domain (netloc) from a URL."""
+        return urlparse(url).netloc.lower()
+
+    @asynccontextmanager
+    async def acquire(self, url: str):
+        """Async context manager that acquires the per-domain semaphore."""
+        domain = self._domain(url)
+        if domain not in self._semaphores:
+            self._semaphores[domain] = asyncio.Semaphore(self._max)
+        async with self._semaphores[domain]:
+            yield
 
 
 async def request_with_retry(

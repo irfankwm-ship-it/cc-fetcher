@@ -31,6 +31,7 @@ from typing import Any
 import httpx
 
 from fetcher.config import SourceConfig
+from fetcher.sources._registry import register_source
 
 logger = logging.getLogger(__name__)
 
@@ -294,12 +295,14 @@ async def _fetch_commodities(
     return commodities
 
 
-async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
+@register_source("statcan")
+async def fetch(config: SourceConfig, date: str, *, client=None, **kwargs) -> dict[str, Any]:
     """Fetch bilateral trade data from Statistics Canada WDS.
 
     Args:
         config: Source configuration with base_url, timeout.
         date: Target date (YYYY-MM-DD).
+        client: Optional shared httpx.AsyncClient.
 
     Returns:
         Dictionary with imports, exports, balance, period info, and
@@ -318,9 +321,11 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
         for coord in TRADE_COORDS
     ]
 
-    async with httpx.AsyncClient() as client:
+    should_close = client is None
+    _client = client or httpx.AsyncClient(timeout=timeout)
+    try:
         try:
-            resp = await client.post(
+            resp = await _client.post(
                 f"{base_url}/getDataFromCubePidCoordAndLatestNPeriods",
                 json=payload,
                 timeout=timeout,
@@ -345,7 +350,10 @@ async def fetch(config: SourceConfig, date: str) -> dict[str, Any]:
             }
 
         # Fetch commodity breakdowns (tolerates failures gracefully)
-        commodities = await _fetch_commodities(client, base_url, timeout, periods)
+        commodities = await _fetch_commodities(_client, base_url, timeout, periods)
+    finally:
+        if should_close:
+            await _client.aclose()
 
     # Parse aggregate results
     series: dict[str, list[dict[str, Any]]] = {}
