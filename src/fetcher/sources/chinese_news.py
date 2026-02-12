@@ -29,22 +29,39 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_FEEDS: list[dict[str, str]] = [
     # ── Mainland China (Simplified Chinese) — Official/State ──
-    {"url": "http://www.xinhuanet.com/politics/xhll.xml", "name": "新华社", "region": "mainland"},
     {"url": "http://www.people.com.cn/rss/politics.xml", "name": "人民日报", "region": "mainland"},
-    {"url": "https://www.huanqiu.com/rss.xml", "name": "环球时报", "region": "mainland"},
+    {"url": "http://www.people.com.cn/rss/world.xml", "name": "人民日报国际", "region": "mainland"},
+    {"url": "http://www.people.com.cn/rss/finance.xml", "name": "人民日报财经", "region": "mainland"},
+    {"url": "http://www.people.com.cn/rss/military.xml", "name": "人民日报军事", "region": "mainland"},
+    {"url": "http://www.people.com.cn/rss/haixia.xml", "name": "人民日报台港澳", "region": "mainland"},
+    {"url": "https://www.chinanews.com.cn/rss/scroll-news.xml", "name": "中新网", "region": "mainland"},
+    {"url": "https://www.chinanews.com/rss/finance.xml", "name": "中新网财经", "region": "mainland"},
     # ── Mainland China (Simplified Chinese) — Business/Tech ──
     {"url": "https://36kr.com/feed", "name": "36氪", "region": "mainland"},
+    {"url": "https://www.huxiu.com/rss/0.xml", "name": "虎嗅", "region": "mainland"},
+    {"url": "https://www.tmtpost.com/feed", "name": "钛媒体", "region": "mainland"},
     # ── Mainland China (Simplified Chinese) — Independent/Critical ──
     {"url": "https://chinadigitaltimes.net/chinese/feed", "name": "中国数字时代", "region": "mainland"},
     # ── Taiwan (Traditional Chinese) ──
     {"url": "https://news.ltn.com.tw/rss/politics.xml", "name": "自由時報", "region": "taiwan"},
     {"url": "https://news.ltn.com.tw/rss/world.xml", "name": "自由時報國際", "region": "taiwan"},
+    {"url": "https://news.ltn.com.tw/rss/business.xml", "name": "自由時報財經", "region": "taiwan"},
+    {"url": "https://feeds.feedburner.com/rsscna/politics", "name": "中央社", "region": "taiwan"},
+    {"url": "https://feeds.feedburner.com/rsscna/mainland", "name": "中央社兩岸", "region": "taiwan"},
+    {"url": "https://feeds.feedburner.com/rsscna/finance", "name": "中央社財經", "region": "taiwan"},
+    {"url": "https://udn.com/rssfeed/news/2/6638", "name": "联合报", "region": "taiwan"},
+    {"url": "https://udn.com/rssfeed/news/2/6645", "name": "联合报國際", "region": "taiwan"},
     # ── Hong Kong (Traditional Chinese) ──
     {"url": "http://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml", "name": "香港電台", "region": "hongkong"},
-    {"url": "http://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cgreaterchina.xml", "name": "香港電台兩岸", "region": "hongkong"},
+    {"url": "http://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cinternational.xml", "name": "香港電台國際", "region": "hongkong"},
+    {"url": "http://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cfinance.xml", "name": "香港電台財經", "region": "hongkong"},
+    {"url": "https://news.mingpao.com/rss/ins/s00001.xml", "name": "明报", "region": "hongkong"},
+    {"url": "https://news.mingpao.com/rss/ins/s00004.xml", "name": "明报兩岸", "region": "hongkong"},
+    {"url": "https://www.scmp.com/rss/36/feed", "name": "南华早报中文", "region": "hongkong"},
     # ── International Chinese-Language Media ──
-    {"url": "https://www.bbc.com/zhongwen/simp/index.xml", "name": "BBC中文", "region": "international"},
+    {"url": "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml", "name": "BBC中文", "region": "international"},
     {"url": "https://rss.dw.com/xml/rss-chi-all", "name": "德国之声", "region": "international"},
+    {"url": "https://www.rfi.fr/cn/rss", "name": "法广中文", "region": "international"},
 ]
 
 # Chinese keywords for filtering — uses exact substring matching (no word boundaries)
