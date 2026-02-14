@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   fetch:
+    if: false  # Disabled — pipeline moved to VPS (2026-02-13)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
